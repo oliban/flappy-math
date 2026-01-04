@@ -1,12 +1,12 @@
 import { describe, test, expect } from 'vitest';
 import { createBird } from './bird.js';
-import { GRAVITY, FLAP_VELOCITY, BIRD_X, CANVAS_HEIGHT } from './constants.js';
+import { GRAVITY, FLAP_VELOCITY, BIRD_X, BASE_HEIGHT } from './constants.js';
 
 describe('Bird', () => {
   test('starts at initial position', () => {
     const bird = createBird();
     expect(bird.x).toBe(BIRD_X);
-    expect(bird.y).toBe(CANVAS_HEIGHT / 2);
+    expect(bird.y).toBe(BASE_HEIGHT / 2);
     expect(bird.velocity).toBe(0);
   });
 
@@ -34,10 +34,10 @@ describe('Bird', () => {
 
   test('cannot go below floor', () => {
     const bird = createBird();
-    bird.y = CANVAS_HEIGHT - 10;
+    bird.y = BASE_HEIGHT - 10;
     bird.velocity = 20;
     bird.update();
-    expect(bird.y).toBeLessThanOrEqual(CANVAS_HEIGHT);
+    expect(bird.y).toBeLessThanOrEqual(BASE_HEIGHT);
   });
 
   test('reset returns bird to initial state', () => {
@@ -45,7 +45,7 @@ describe('Bird', () => {
     bird.y = 100;
     bird.velocity = 5;
     bird.reset();
-    expect(bird.y).toBe(CANVAS_HEIGHT / 2);
+    expect(bird.y).toBe(BASE_HEIGHT / 2);
     expect(bird.velocity).toBe(0);
   });
 });

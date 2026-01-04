@@ -21,13 +21,14 @@ describe('Scoring', () => {
     expect(scoring.streak).toBe(1);
   });
 
-  test('wrong answer loses life and resets streak', () => {
+  test('wrong answer loses life and resets streak but keeps bestStreak', () => {
     const scoring = createScoring();
     scoring.correctAnswer();
     scoring.correctAnswer();
     scoring.wrongAnswer();
     expect(scoring.lives).toBe(INITIAL_LIVES - 1);
     expect(scoring.streak).toBe(0);
+    expect(scoring.bestStreak).toBe(2); // best streak preserved
     expect(scoring.score).toBe(2); // score preserved
   });
 
@@ -75,5 +76,6 @@ describe('Scoring', () => {
     expect(scoring.lives).toBe(INITIAL_LIVES);
     expect(scoring.score).toBe(0);
     expect(scoring.streak).toBe(0);
+    expect(scoring.bestStreak).toBe(0);
   });
 });

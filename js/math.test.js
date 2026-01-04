@@ -12,6 +12,12 @@ describe('Math Problem Generation', () => {
     expect(problem.text).toBe('7 × 8 = ?');
   });
 
+  test('includes operands a and b in problem', () => {
+    const problem = generateProblem(7, 8);
+    expect(problem.a).toBe(7);
+    expect(problem.b).toBe(8);
+  });
+
   test('generates 3 answers total', () => {
     const problem = generateProblem(5, 6);
     expect(problem.answers).toHaveLength(3);

@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, BASE_SPEED, SPEED_INCREMENT, PIPE_SPAWN_INTERVAL } from './constants.js';
+import { BASE_WIDTH, BASE_HEIGHT, BASE_SPEED, SPEED_INCREMENT, PIPE_SPAWN_INTERVAL } from './constants.js';
 import { createGameState, STATES } from './state.js';
 import { createBird } from './bird.js';
 import { createPipe } from './pipe.js';
@@ -7,6 +7,8 @@ import { checkCollision, CollisionResult } from './collision.js';
 import { createScoring } from './scoring.js';
 import { createProgress } from './progress.js';
 import { createStorage } from './storage.js';
+import { createSoundPlayer } from './sound.js';
+import { createVoicePlayer } from './voice.js';
 import { t, setLanguage, getLanguage, getAvailableLanguages, initLanguage } from './i18n.js';
 
 class Game {
@@ -21,6 +23,10 @@ class Game {
     this.scoring = createScoring();
     this.progress = createProgress();
     this.storage = createStorage();
+    this.sound = createSoundPlayer();
+    this.voice = createVoicePlayer();
+    this.voice.init();
+    this.voice.setLanguage(getLanguage());
 
     this.pipes = [];
     this.currentProblem = null;
@@ -31,12 +37,21 @@ class Game {
     this.fadeOut = 0; // 0 = no fade, increases to 1 over 2 seconds
     this.isFadingOut = false;
 
+    // Detect mobile/touch devices
+    this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
     this.loadProgress();
     this.setupCanvas();
     this.setupInput();
 
     this.lastTime = 0;
     this.gameLoop = this.gameLoop.bind(this);
+
+    // FPS tracking
+    this.frameCount = 0;
+    this.fpsLastTime = 0;
+    this.currentFPS = 0;
+
     requestAnimationFrame(this.gameLoop);
   }
 
@@ -52,8 +67,28 @@ class Game {
   }
 
   setupCanvas() {
-    this.canvas.width = CANVAS_WIDTH;
-    this.canvas.height = CANVAS_HEIGHT;
+    this.updateCanvasSize();
+    window.addEventListener('resize', () => this.updateCanvasSize());
+  }
+
+  updateCanvasSize() {
+    // Internal canvas resolution - height fixed, width based on aspect ratio
+    const viewportAspect = window.innerWidth / window.innerHeight;
+
+    this.canvasHeight = BASE_HEIGHT;
+    this.canvasWidth = Math.round(BASE_HEIGHT * viewportAspect);
+
+    this.canvas.width = this.canvasWidth;
+    this.canvas.height = this.canvasHeight;
+
+    // CSS scales canvas to fill viewport
+    this.canvas.style.width = '100vw';
+    this.canvas.style.height = '100vh';
+
+    // Cache sky gradient (recreate on resize)
+    this.skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.canvasHeight);
+    this.skyGradient.addColorStop(0, '#87CEEB');
+    this.skyGradient.addColorStop(1, '#E0F6FF');
   }
 
   setupInput() {
@@ -98,23 +133,49 @@ class Game {
     this.canvas.addEventListener('click', (e) => {
       this.handleClick(e);
     });
+
+    // Touch support for mobile
+    this.canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      this.handleClick(touch);
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+    }, { passive: false });
   }
 
   handleClick(e) {
+    // Unlock audio/voice on ANY click (must be first!)
+    this.sound.unlock();
+    this.voice.unlock();
+
     const rect = this.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = CANVAS_WIDTH / 2;
+    // Scale coordinates to match internal canvas dimensions
+    const scaleX = this.canvasWidth / rect.width;
+    const scaleY = this.canvasHeight / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    const centerX = this.canvasWidth / 2;
 
     if (this.state.current() === STATES.MENU) {
+      // Voice toggle
+      const langY = 30;
+      const langStartX = this.canvasWidth - 100;
+      const voiceX = langStartX - 45;
+      if (x >= voiceX - 18 && x <= voiceX + 18 && y >= langY - 18 && y <= langY + 18) {
+        this.voice.toggle();
+        return;
+      }
+
       // Language selector
       const langs = getAvailableLanguages();
-      const langY = 30;
-      const langStartX = CANVAS_WIDTH - 100;
       for (let i = 0; i < langs.length; i++) {
         const langX = langStartX + i * 45;
         if (x >= langX - 18 && x <= langX + 18 && y >= langY - 18 && y <= langY + 18) {
           setLanguage(langs[i].code);
+          this.voice.setLanguage(langs[i].code);
           return;
         }
       }
@@ -163,18 +224,31 @@ class Game {
       }
     } else if (this.state.current() === STATES.PLAYING) {
       this.bird.flap();
+      this.sound.play('flap');
+      // Speak current question on flap (user gesture context)
+      if (this.currentProblem && !this.currentProblem.spoken) {
+        this.voice.speakQuestion(this.currentProblem.a, this.currentProblem.b);
+        this.currentProblem.spoken = true;
+      }
     } else if (this.state.current() === STATES.GAME_OVER) {
       this.state.returnToMenu();
     }
   }
 
   handleInput() {
+    this.sound.unlock();
     const currentState = this.state.current();
 
     if (currentState === STATES.MENU) {
       this.startGame();
     } else if (currentState === STATES.PLAYING) {
       this.bird.flap();
+      this.sound.play('flap');
+      // Speak current question on first flap (user gesture context)
+      if (this.currentProblem && !this.currentProblem.spoken) {
+        this.voice.speakQuestion(this.currentProblem.a, this.currentProblem.b);
+        this.currentProblem.spoken = true;
+      }
     } else if (currentState === STATES.GAME_OVER) {
       this.state.returnToMenu();
     }
@@ -189,13 +263,42 @@ class Game {
     this.lastPipeSpawn = 0;
     this.fadeOut = 0;
     this.isFadingOut = false;
-    this.spawnPipe();
+    this.fillScreenWithPipes();
+  }
+
+  fillScreenWithPipes() {
+    // Spawn pipes to fill the screen with consistent spacing
+    const PIPE_SPACING = 500;
+    const startX = 150 + PIPE_SPACING; // First pipe ahead of bird
+
+    for (let x = startX; x <= this.canvasWidth; x += PIPE_SPACING) {
+      this.spawnPipeAt(x);
+    }
+    this.updateCurrentProblem();
+  }
+
+  spawnPipeAt(x) {
+    const problem = generateProblemForTable(this.selectedTable);
+    const pipe = createPipe(problem.answers, x);
+    pipe.problem = problem; // Store problem with pipe
+    this.pipes.push(pipe);
   }
 
   spawnPipe() {
-    this.currentProblem = generateProblemForTable(this.selectedTable);
-    const pipe = createPipe(this.currentProblem.answers);
-    this.pipes.push(pipe);
+    // Spawn new pipe at right edge
+    this.spawnPipeAt(this.canvasWidth);
+  }
+
+  updateCurrentProblem() {
+    // Show question for first unanswered pipe
+    const firstUnanswered = this.pipes.find(p => !p.passed);
+    if (firstUnanswered && firstUnanswered.problem) {
+      const newProblem = firstUnanswered.problem;
+      if (this.currentProblem !== newProblem) {
+        this.currentProblem = newProblem;
+        // Don't speak here - speak on user interaction (flap/click) instead
+      }
+    }
   }
 
   getGameSpeed() {
@@ -205,6 +308,14 @@ class Game {
   gameLoop(timestamp) {
     const deltaTime = timestamp - this.lastTime;
     this.lastTime = timestamp;
+
+    // Calculate FPS
+    this.frameCount++;
+    if (timestamp - this.fpsLastTime >= 1000) {
+      this.currentFPS = this.frameCount;
+      this.frameCount = 0;
+      this.fpsLastTime = timestamp;
+    }
 
     this.update(deltaTime, timestamp);
     this.render();
@@ -222,6 +333,7 @@ class Game {
     if (this.bird.y <= this.bird.size / 2) {
       if (this.bird.canBeHurt()) {
         this.bird.bounce('down');
+        this.sound.play('crash');
         this.scoring.hitPipe();
         if (this.scoring.isGameOver()) {
           this.startFadeOut();
@@ -229,15 +341,16 @@ class Game {
       }
       this.bird.y = this.bird.size / 2;
     }
-    if (this.bird.y >= CANVAS_HEIGHT - this.bird.size / 2) {
+    if (this.bird.y >= this.canvasHeight - this.bird.size / 2) {
       if (this.bird.canBeHurt()) {
         this.bird.bounce('up');
+        this.sound.play('crash');
         this.scoring.hitPipe();
         if (this.scoring.isGameOver()) {
           this.startFadeOut();
         }
       }
-      this.bird.y = CANVAS_HEIGHT - this.bird.size / 2;
+      this.bird.y = this.canvasHeight - this.bird.size / 2;
     }
 
     const speed = this.getGameSpeed();
@@ -245,13 +358,23 @@ class Game {
     // Update pipes
     this.pipes.forEach(pipe => pipe.update(speed));
 
-    // Remove off-screen pipes
-    this.pipes = this.pipes.filter(pipe => !pipe.isOffScreen());
+    // Remove off-screen pipes (in-place to avoid allocation)
+    let pipesRemoved = false;
+    for (let i = this.pipes.length - 1; i >= 0; i--) {
+      if (this.pipes[i].isOffScreen()) {
+        this.pipes.splice(i, 1);
+        pipesRemoved = true;
+      }
+    }
+    // Update question if pipes were removed (e.g., crashed into and scrolled past)
+    if (pipesRemoved) {
+      this.updateCurrentProblem();
+    }
 
-    // Spawn new pipe only after current one is passed
-    const allPipesPassed = this.pipes.every(pipe => pipe.passed);
-    if (allPipesPassed && this.pipes.length === 0 ||
-        (allPipesPassed && this.pipes[this.pipes.length - 1].passed)) {
+    // Spawn new pipe when last pipe has moved far enough from right edge
+    const PIPE_SPACING = 500;
+    const lastPipe = this.pipes[this.pipes.length - 1];
+    if (!lastPipe || lastPipe.x <= this.canvasWidth - PIPE_SPACING) {
       this.spawnPipe();
     }
 
@@ -266,6 +389,7 @@ class Game {
           // Only lose life if this pipe hasn't already damaged the player
           if (!pipe.damagedPlayer) {
             pipe.damagedPlayer = true;
+            this.sound.play('crash');
             this.scoring.hitPipe();
             if (this.scoring.isGameOver()) {
               this.startFadeOut();
@@ -276,6 +400,7 @@ class Game {
       } else if (result.type === CollisionResult.PIPE_EDGE) {
         if (this.bird.canBeHurt()) {
           this.bird.bounce();
+          this.sound.play('thud');
         }
       } else if (result.type === CollisionResult.GAP && !pipe.passed) {
         // Only score gaps on pipes that haven't been passed yet
@@ -283,18 +408,25 @@ class Game {
         const isCorrect = result.answer === this.currentProblem.correctAnswer;
         pipe.markGapHit(result.answer, isCorrect);
 
+        // Update to show next question immediately
+        this.updateCurrentProblem();
+
         if (isCorrect) {
           this.scoring.correctAnswer();
+          this.sound.play('correct');
+          this.voice.speakAnswer(result.answer);
 
           // Check mastery
           if (this.scoring.hasMastered()) {
             this.progress.updateBestSpeed(this.selectedTable, this.selectedSpeed);
             this.saveProgress();
             this.showMasteryMessage = true;
+            this.sound.play('mastery');
             this.startFadeOut();
           }
         } else {
           this.scoring.wrongAnswer();
+          this.sound.play('wrong');
           if (this.scoring.isGameOver()) {
             this.startFadeOut();
           }
@@ -322,15 +454,15 @@ class Game {
     this.state.endGame();
     this.isFadingOut = false;
     this.fadeOut = 0;
+    if (!this.showMasteryMessage) {
+      this.sound.play('gameover');
+    }
   }
 
   render() {
-    // Clear canvas with sky gradient
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    gradient.addColorStop(0, '#87CEEB');
-    gradient.addColorStop(1, '#E0F6FF');
-    this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Clear canvas with cached sky gradient
+    this.ctx.fillStyle = this.skyGradient;
+    this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
 
     const currentState = this.state.current();
 
@@ -341,34 +473,66 @@ class Game {
       // Render fade-out overlay
       if (this.isFadingOut) {
         this.ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeOut * 0.8})`;
-        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
       }
     } else if (currentState === STATES.GAME_OVER) {
       this.renderGameOver();
     }
+
+    // FPS counter (top-right, always visible)
+    this.ctx.font = '12px monospace';
+    this.ctx.textAlign = 'right';
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    this.ctx.fillText(`${this.currentFPS} FPS`, this.canvasWidth - 9, 21);
+    this.ctx.fillStyle = 'rgba(100, 255, 100, 0.8)';
+    this.ctx.fillText(`${this.currentFPS} FPS`, this.canvasWidth - 10, 20);
   }
 
   renderMenu() {
     const ctx = this.ctx;
-    const centerX = CANVAS_WIDTH / 2;
+    const centerX = this.canvasWidth / 2;
 
-    // Language selector (top right)
+    // Voice toggle and Language selector (top right)
     const langs = getAvailableLanguages();
     const langY = 30;
-    const langStartX = CANVAS_WIDTH - 100;
+    const langStartX = this.canvasWidth - 100;
+
+    // Voice toggle icon (left of language flags)
+    const voiceX = langStartX - 45;
+    ctx.font = '22px system-ui';
+    ctx.textAlign = 'center';
+    if (!this.voice.isEnabled()) {
+      ctx.globalAlpha = 0.5;
+    }
+    ctx.fillText(this.voice.isEnabled() ? '🔊' : '🔇', voiceX, langY + 8);
+    ctx.globalAlpha = 1;
+
+    // Language flags
     langs.forEach((lang, i) => {
       const x = langStartX + i * 45;
       const isSelected = getLanguage() === lang.code;
 
-      if (isSelected) {
-        ctx.fillStyle = 'rgba(76, 175, 80, 0.3)';
-        this.roundRect(ctx, x - 18, langY - 18, 36, 36, 8);
-        ctx.fill();
-      }
-
       ctx.font = '24px system-ui';
       ctx.textAlign = 'center';
+
+      // Non-selected flags are slightly faded
+      if (!isSelected) {
+        ctx.globalAlpha = 0.5;
+      }
+
       ctx.fillText(lang.flag, x, langY + 8);
+      ctx.globalAlpha = 1;
+
+      // Underline for selected language
+      if (isSelected) {
+        ctx.strokeStyle = '#4CAF50';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - 12, langY + 16);
+        ctx.lineTo(x + 12, langY + 16);
+        ctx.stroke();
+      }
     });
 
     // Title with shadow
@@ -487,15 +651,11 @@ class Game {
 
     ctx.font = 'bold 32px system-ui';
     ctx.fillStyle = '#4CAF50';
-    ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + 62);
-
-    ctx.font = '12px system-ui';
-    ctx.fillStyle = '#888';
-    ctx.fillText('← → or ↑ ↓ to adjust', centerX, speedCardY + 75);
+    ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + 55);
 
     // Start button
+    const btnY = 455;
     const btnX = centerX - 110;
-    const btnY = 460;
     const btnWidth = 220;
     const btnHeight = 55;
 
@@ -517,10 +677,14 @@ class Game {
     ctx.font = 'bold 26px system-ui';
     ctx.fillText(t('startGame'), centerX, btnY + 36);
 
-    // Instructions
-    ctx.fillStyle = '#777';
-    ctx.font = '13px system-ui';
-    ctx.fillText(t('pressToStart'), centerX, 550);
+    // Instructions - different for mobile vs desktop
+    ctx.fillStyle = '#999';
+    ctx.font = '14px system-ui';
+    if (this.isMobile) {
+      ctx.fillText('Tap to start', centerX, btnY + btnHeight + 25);
+    } else {
+      ctx.fillText('Press SPACE or click to start  •  Arrow keys to adjust', centerX, btnY + btnHeight + 25);
+    }
   }
 
   roundRect(ctx, x, y, width, height, radius) {
@@ -563,36 +727,109 @@ class Game {
       ctx.setLineDash([]);
     }
 
-    // HUD
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(10, 10, 200, 100);
+    // HUD - Stats panel (bottom-right, semi-transparent)
+    const hudWidth = 160;
+    const hudHeight = 115;
+    const hudX = this.canvasWidth - hudWidth - 12;
+    const hudY = this.canvasHeight - hudHeight - 12;
+    const hudRadius = 12;
 
-    ctx.fillStyle = '#FFF';
-    ctx.font = '18px system-ui';
+    // HUD shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    this.roundRect(ctx, hudX + 3, hudY + 3, hudWidth, hudHeight, hudRadius);
+    ctx.fill();
+
+    // HUD background with gradient (semi-transparent)
+    const hudGradient = ctx.createLinearGradient(hudX, hudY, hudX, hudY + hudHeight);
+    hudGradient.addColorStop(0, 'rgba(30, 40, 50, 0.7)');
+    hudGradient.addColorStop(1, 'rgba(20, 25, 35, 0.75)');
+    ctx.fillStyle = hudGradient;
+    this.roundRect(ctx, hudX, hudY, hudWidth, hudHeight, hudRadius);
+    ctx.fill();
+
+    // HUD border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    this.roundRect(ctx, hudX, hudY, hudWidth, hudHeight, hudRadius);
+    ctx.stroke();
+
+    // Stats text
     ctx.textAlign = 'left';
-    ctx.fillText(`${t('table')}: ${this.selectedTable}×`, 20, 35);
-    ctx.fillText(`${t('speed')}: ${this.selectedSpeed}`, 20, 58);
-    ctx.fillText(`${t('streak')}: ${this.scoring.streak}/10`, 20, 81);
-    ctx.fillText(`${t('lives')}: ${'❤️'.repeat(this.scoring.lives)}`, 20, 104);
+    ctx.font = '15px system-ui';
 
-    // Current problem
+    // Table
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText(t('table'), hudX + 12, hudY + 24);
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 15px system-ui';
+    ctx.fillText(`${this.selectedTable}×`, hudX + hudWidth - 45, hudY + 24);
+
+    // Speed
+    ctx.font = '15px system-ui';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText(t('speed'), hudX + 12, hudY + 46);
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 15px system-ui';
+    ctx.fillText(`${this.selectedSpeed}`, hudX + hudWidth - 45, hudY + 46);
+
+    // Streak with progress indicator
+    ctx.font = '15px system-ui';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText(t('streak'), hudX + 12, hudY + 68);
+    ctx.fillStyle = this.scoring.streak >= 7 ? '#4CAF50' : '#FFF';
+    ctx.font = 'bold 15px system-ui';
+    ctx.fillText(`${this.scoring.streak}/10`, hudX + hudWidth - 45, hudY + 68);
+
+    // Lives as hearts
+    ctx.font = '15px system-ui';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText(t('lives'), hudX + 12, hudY + 92);
+    ctx.font = '18px system-ui';
+    const hearts = '❤️'.repeat(Math.max(0, this.scoring.lives));
+    const emptyHearts = '🖤'.repeat(Math.max(0, 3 - this.scoring.lives));
+    ctx.fillText(hearts + emptyHearts, hudX + 55, hudY + 93);
+
+    // Current problem - centered pill shape
     if (this.currentProblem) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.fillRect(CANVAS_WIDTH / 2 - 100, 10, 200, 50);
+      const problemWidth = 180;
+      const problemHeight = 50;
+      const problemX = this.canvasWidth / 2 - problemWidth / 2;
+      const problemY = 12;
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      this.roundRect(ctx, problemX + 3, problemY + 3, problemWidth, problemHeight, 25);
+      ctx.fill();
+
+      // Background
+      const problemGradient = ctx.createLinearGradient(problemX, problemY, problemX, problemY + problemHeight);
+      problemGradient.addColorStop(0, 'rgba(30, 40, 50, 0.95)');
+      problemGradient.addColorStop(1, 'rgba(20, 25, 35, 0.98)');
+      ctx.fillStyle = problemGradient;
+      this.roundRect(ctx, problemX, problemY, problemWidth, problemHeight, 25);
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+      ctx.lineWidth = 2;
+      this.roundRect(ctx, problemX, problemY, problemWidth, problemHeight, 25);
+      ctx.stroke();
+
+      // Problem text
       ctx.fillStyle = '#FFD700';
-      ctx.font = 'bold 28px system-ui';
+      ctx.font = 'bold 26px system-ui';
       ctx.textAlign = 'center';
-      ctx.fillText(this.currentProblem.text, CANVAS_WIDTH / 2, 45);
+      ctx.fillText(this.currentProblem.text, this.canvasWidth / 2, problemY + 34);
     }
   }
 
   renderGameOver() {
     const ctx = this.ctx;
-    const centerX = CANVAS_WIDTH / 2;
+    const centerX = this.canvasWidth / 2;
 
     // Semi-transparent overlay
     ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
 
     ctx.textAlign = 'center';
 
@@ -689,7 +926,7 @@ class Game {
       ctx.fillText(t('streak'), centerX, cardY + 230);
       ctx.font = 'bold 32px system-ui';
       ctx.fillStyle = '#2196F3';
-      ctx.fillText(`${this.scoring.streak} / 10`, centerX, cardY + 270);
+      ctx.fillText(`${this.scoring.bestStreak} / 10`, centerX, cardY + 270);
     }
 
     // Continue button

@@ -5,10 +5,14 @@ export function createScoring() {
     lives: INITIAL_LIVES,
     score: 0,
     streak: 0,
+    bestStreak: 0,
 
     correctAnswer() {
       this.score++;
       this.streak++;
+      if (this.streak > this.bestStreak) {
+        this.bestStreak = this.streak;
+      }
     },
 
     wrongAnswer() {
@@ -33,6 +37,7 @@ export function createScoring() {
       this.lives = INITIAL_LIVES;
       this.score = 0;
       this.streak = 0;
+      this.bestStreak = 0;
     }
   };
 }

@@ -1,7 +1,22 @@
-import { GRAVITY, FLAP_VELOCITY, BIRD_X, BIRD_SIZE, CANVAS_HEIGHT } from './constants.js';
+import { GRAVITY, FLAP_VELOCITY, BIRD_X, BIRD_SIZE, BASE_HEIGHT } from './constants.js';
+
+// Cached bird body gradient (created once, reused)
+let cachedBirdGradient = null;
+let gradientCtx = null;
+
+function ensureBirdGradient(ctx) {
+  if (gradientCtx === ctx && cachedBirdGradient) return;
+  gradientCtx = ctx;
+
+  const r = BIRD_SIZE / 2;
+  cachedBirdGradient = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
+  cachedBirdGradient.addColorStop(0, '#FFE566');
+  cachedBirdGradient.addColorStop(0.7, '#FFD700');
+  cachedBirdGradient.addColorStop(1, '#E5A800');
+}
 
 export function createBird() {
-  const initialY = CANVAS_HEIGHT / 2;
+  const initialY = BASE_HEIGHT / 2;
 
   const bird = {
     x: BIRD_X,
@@ -28,8 +43,8 @@ export function createBird() {
 
       // Smooth rotation based on velocity
       // Nose up when going up, nose down when falling
-      this.targetRotation = Math.min(Math.max(this.velocity * 0.1, -0.5), 1.2);
-      this.rotation += (this.targetRotation - this.rotation) * 0.1;
+      this.targetRotation = Math.min(Math.max(this.velocity * 0.4, -1.3), 2.2);
+      this.rotation += (this.targetRotation - this.rotation) * 0.25;
 
       // Wing flap animation
       this.wingPhase += 0.15;
@@ -38,8 +53,8 @@ export function createBird() {
       if (this.y < this.size / 2) {
         this.y = this.size / 2;
       }
-      if (this.y > CANVAS_HEIGHT - this.size / 2) {
-        this.y = CANVAS_HEIGHT - this.size / 2;
+      if (this.y > BASE_HEIGHT - this.size / 2) {
+        this.y = BASE_HEIGHT - this.size / 2;
       }
     },
 
@@ -81,6 +96,8 @@ export function createBird() {
     },
 
     render(ctx) {
+      ensureBirdGradient(ctx);
+
       ctx.save();
       ctx.translate(this.x, this.y);
       ctx.rotate(this.rotation);
@@ -98,13 +115,8 @@ export function createBird() {
       ctx.ellipse(2, 2, r, r * 0.85, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Body gradient
-      const bodyGradient = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
-      bodyGradient.addColorStop(0, '#FFE566');
-      bodyGradient.addColorStop(0.7, '#FFD700');
-      bodyGradient.addColorStop(1, '#E5A800');
-
-      ctx.fillStyle = bodyGradient;
+      // Body with cached gradient
+      ctx.fillStyle = cachedBirdGradient;
       ctx.beginPath();
       ctx.ellipse(0, 0, r, r * 0.85, 0, 0, Math.PI * 2);
       ctx.fill();

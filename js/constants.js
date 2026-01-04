@@ -1,6 +1,6 @@
-// Canvas dimensions
-export const CANVAS_WIDTH = 800;
-export const CANVAS_HEIGHT = 600;
+// Canvas base dimensions (height is fixed, width adapts to viewport)
+export const BASE_HEIGHT = 600;
+export const BASE_WIDTH = 800; // Minimum width, will expand for wider screens
 
 // Bird physics
 export const GRAVITY = 0.025;

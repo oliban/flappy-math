@@ -9,6 +9,8 @@ export function generateProblem(a, b) {
 
   return {
     text: `${a} × ${b} = ?`,
+    a,
+    b,
     correctAnswer,
     answers
   };

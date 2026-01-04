@@ -1,8 +1,55 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, PIPE_WIDTH, PIPE_GAP_HEIGHT, PIPE_CAP_HEIGHT } from './constants.js';
+import { BASE_HEIGHT, PIPE_WIDTH, PIPE_GAP_HEIGHT, PIPE_CAP_HEIGHT } from './constants.js';
 
-export function createPipe(answers) {
+// Cached gradients (created once, reused for all pipes)
+let cachedPipeGradient = null;
+let cachedCapGradient = null;
+let cachedBubbleGradient = null;
+let gradientCtx = null;
+
+// Particle object pool (reuse particles to avoid allocation)
+const particlePool = [];
+const POOL_SIZE = 100;
+
+function getParticle() {
+  return particlePool.pop() || { x: 0, y: 0, vx: 0, vy: 0, size: 0, color: '', life: 0 };
+}
+
+function releaseParticle(p) {
+  if (particlePool.length < POOL_SIZE) {
+    particlePool.push(p);
+  }
+}
+
+function ensureGradients(ctx) {
+  if (gradientCtx === ctx && cachedPipeGradient) return;
+  gradientCtx = ctx;
+
+  // Pipe body gradient (horizontal, width = PIPE_WIDTH)
+  cachedPipeGradient = ctx.createLinearGradient(0, 0, PIPE_WIDTH, 0);
+  cachedPipeGradient.addColorStop(0, '#73BF5E');
+  cachedPipeGradient.addColorStop(0.2, '#8CD674');
+  cachedPipeGradient.addColorStop(0.5, '#5DAE4A');
+  cachedPipeGradient.addColorStop(0.8, '#4A9339');
+  cachedPipeGradient.addColorStop(1, '#3D7A2F');
+
+  // Cap gradient (horizontal, width = PIPE_WIDTH + 10)
+  const capWidth = PIPE_WIDTH + 10;
+  cachedCapGradient = ctx.createLinearGradient(0, 0, capWidth, 0);
+  cachedCapGradient.addColorStop(0, '#8CD674');
+  cachedCapGradient.addColorStop(0.2, '#A3E88A');
+  cachedCapGradient.addColorStop(0.5, '#73BF5E');
+  cachedCapGradient.addColorStop(0.8, '#5DAE4A');
+  cachedCapGradient.addColorStop(1, '#4A9339');
+
+  // Bubble gradient (vertical, height = 45)
+  cachedBubbleGradient = ctx.createLinearGradient(0, 0, 0, 45);
+  cachedBubbleGradient.addColorStop(0, '#FFFFFF');
+  cachedBubbleGradient.addColorStop(1, '#E8E8E8');
+}
+
+export function createPipe(answers, canvasWidth) {
   // Distribute 3 gaps evenly across screen height
-  const gapSpacing = CANVAS_HEIGHT / 4;
+  const gapSpacing = BASE_HEIGHT / 4;
 
   const gaps = answers.map((answer, index) => ({
     answer,
@@ -15,7 +62,7 @@ export function createPipe(answers) {
   }));
 
   const pipe = {
-    x: CANVAS_WIDTH,
+    x: canvasWidth,
     width: PIPE_WIDTH,
     gaps,
     passed: false,
@@ -31,15 +78,19 @@ export function createPipe(answers) {
             // Fade out correct answer
             gap.fadeOpacity = Math.max(0, gap.fadeOpacity - 0.15);
           } else if (gap.hitResult === 'wrong') {
-            // Update explosion particles
-            gap.explosionParticles.forEach(p => {
+            // Update explosion particles (in-place removal, return to pool)
+            for (let i = gap.explosionParticles.length - 1; i >= 0; i--) {
+              const p = gap.explosionParticles[i];
               p.x += p.vx;
               p.y += p.vy;
               p.vy += 0.3; // gravity
               p.life -= 0.03;
               p.size *= 0.96;
-            });
-            gap.explosionParticles = gap.explosionParticles.filter(p => p.life > 0);
+              if (p.life <= 0) {
+                releaseParticle(p);
+                gap.explosionParticles.splice(i, 1);
+              }
+            }
           }
         }
       });
@@ -52,21 +103,21 @@ export function createPipe(answers) {
         gap.hitResult = isCorrect ? 'correct' : 'wrong';
 
         if (!isCorrect) {
-          // Create explosion particles
+          // Create explosion particles from pool
           const bubbleX = this.x + this.width / 2;
           const colors = ['#FF4444', '#FF6644', '#FFAA44', '#FFDD44', '#FF8844'];
           for (let i = 0; i < 20; i++) {
             const angle = (Math.PI * 2 * i) / 20 + Math.random() * 0.3;
             const speed = 3 + Math.random() * 4;
-            gap.explosionParticles.push({
-              x: bubbleX,
-              y: gap.y,
-              vx: Math.cos(angle) * speed,
-              vy: Math.sin(angle) * speed - 2,
-              size: 6 + Math.random() * 6,
-              color: colors[Math.floor(Math.random() * colors.length)],
-              life: 1
-            });
+            const p = getParticle();
+            p.x = bubbleX;
+            p.y = gap.y;
+            p.vx = Math.cos(angle) * speed;
+            p.vy = Math.sin(angle) * speed - 2;
+            p.size = 6 + Math.random() * 6;
+            p.color = colors[Math.floor(Math.random() * colors.length)];
+            p.life = 1;
+            gap.explosionParticles.push(p);
           }
         }
       }
@@ -81,6 +132,7 @@ export function createPipe(answers) {
     },
 
     render(ctx) {
+      ensureGradients(ctx);
       const capWidth = this.width + 10;
       const capOffset = (capWidth - this.width) / 2;
 
@@ -104,8 +156,8 @@ export function createPipe(answers) {
       // Draw final pipe section going DOWN to bottom
       const lastGap = this.gaps[this.gaps.length - 1];
       const finalStart = lastGap.y + lastGap.height / 2;
-      if (finalStart < CANVAS_HEIGHT) {
-        this.drawPipeSection(ctx, finalStart, CANVAS_HEIGHT, 'up', capWidth, capOffset);
+      if (finalStart < BASE_HEIGHT) {
+        this.drawPipeSection(ctx, finalStart, BASE_HEIGHT, 'up', capWidth, capOffset);
       }
     },
 
@@ -113,48 +165,41 @@ export function createPipe(answers) {
       const height = bottom - top;
       if (height <= 0) return;
 
-      // Main pipe body with gradient
-      const gradient = ctx.createLinearGradient(this.x, 0, this.x + this.width, 0);
-      gradient.addColorStop(0, '#73BF5E');
-      gradient.addColorStop(0.2, '#8CD674');
-      gradient.addColorStop(0.5, '#5DAE4A');
-      gradient.addColorStop(0.8, '#4A9339');
-      gradient.addColorStop(1, '#3D7A2F');
+      // Use cached gradient with context translation
+      ctx.save();
+      ctx.translate(this.x, 0);
 
-      ctx.fillStyle = gradient;
-      ctx.fillRect(this.x, top, this.width, height);
+      // Main pipe body with cached gradient
+      ctx.fillStyle = cachedPipeGradient;
+      ctx.fillRect(0, top, this.width, height);
 
       // Pipe border
       ctx.strokeStyle = '#2D5A1F';
       ctx.lineWidth = 2;
-      ctx.strokeRect(this.x, top, this.width, height);
+      ctx.strokeRect(0, top, this.width, height);
 
       // Cap/rim at the gap edge
       const capY = capPosition === 'down' ? bottom - PIPE_CAP_HEIGHT : top;
 
-      // Cap gradient
-      const capGradient = ctx.createLinearGradient(this.x - capOffset, 0, this.x + capWidth - capOffset, 0);
-      capGradient.addColorStop(0, '#8CD674');
-      capGradient.addColorStop(0.2, '#A3E88A');
-      capGradient.addColorStop(0.5, '#73BF5E');
-      capGradient.addColorStop(0.8, '#5DAE4A');
-      capGradient.addColorStop(1, '#4A9339');
-
-      ctx.fillStyle = capGradient;
-      ctx.fillRect(this.x - capOffset, capY, capWidth, PIPE_CAP_HEIGHT);
+      // Cap with cached gradient (offset by -capOffset relative to pipe)
+      ctx.translate(-capOffset, 0);
+      ctx.fillStyle = cachedCapGradient;
+      ctx.fillRect(0, capY, capWidth, PIPE_CAP_HEIGHT);
 
       // Cap border
       ctx.strokeStyle = '#2D5A1F';
       ctx.lineWidth = 2;
-      ctx.strokeRect(this.x - capOffset, capY, capWidth, PIPE_CAP_HEIGHT);
+      ctx.strokeRect(0, capY, capWidth, PIPE_CAP_HEIGHT);
 
       // Cap highlight line
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(this.x - capOffset + 4, capY + 4);
-      ctx.lineTo(this.x - capOffset + 4, capY + PIPE_CAP_HEIGHT - 4);
+      ctx.moveTo(4, capY + 4);
+      ctx.lineTo(4, capY + PIPE_CAP_HEIGHT - 4);
       ctx.stroke();
+
+      ctx.restore();
     },
 
     drawAnswerBubble(ctx, gap) {
@@ -195,19 +240,19 @@ export function createPipe(answers) {
       this.roundRect(ctx, bubbleX + 3, bubbleY + 3, bubbleWidth, bubbleHeight, radius);
       ctx.fill();
 
-      // Bubble background
-      const bubbleGradient = ctx.createLinearGradient(bubbleX, bubbleY, bubbleX, bubbleY + bubbleHeight);
-      bubbleGradient.addColorStop(0, '#FFFFFF');
-      bubbleGradient.addColorStop(1, '#E8E8E8');
-      ctx.fillStyle = bubbleGradient;
-      this.roundRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, radius);
+      // Bubble background with cached gradient (use translation)
+      ctx.save();
+      ctx.translate(bubbleX, bubbleY);
+      ctx.fillStyle = cachedBubbleGradient;
+      this.roundRect(ctx, 0, 0, bubbleWidth, bubbleHeight, radius);
       ctx.fill();
 
       // Bubble border
       ctx.strokeStyle = '#CCCCCC';
       ctx.lineWidth = 2;
-      this.roundRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, radius);
+      this.roundRect(ctx, 0, 0, bubbleWidth, bubbleHeight, radius);
       ctx.stroke();
+      ctx.restore();
 
       // Answer text
       ctx.fillStyle = '#333';
@@ -240,7 +285,7 @@ export function createPipe(answers) {
       ctx.setLineDash([5, 5]);
 
       // Draw pipe hitbox (full width)
-      ctx.strokeRect(this.x, 0, this.width, CANVAS_HEIGHT);
+      ctx.strokeRect(this.x, 0, this.width, BASE_HEIGHT);
 
       // Draw gap hitboxes in green
       ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
@@ -269,9 +314,9 @@ export function createPipe(answers) {
 
       // Bottom section
       const lastGapBottom = this.gaps[this.gaps.length - 1].y + this.gaps[this.gaps.length - 1].height / 2;
-      if (lastGapBottom < CANVAS_HEIGHT) {
+      if (lastGapBottom < BASE_HEIGHT) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-        ctx.fillRect(this.x, lastGapBottom, this.width, CANVAS_HEIGHT - lastGapBottom);
+        ctx.fillRect(this.x, lastGapBottom, this.width, BASE_HEIGHT - lastGapBottom);
       }
 
       ctx.setLineDash([]);
