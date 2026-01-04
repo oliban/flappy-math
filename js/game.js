@@ -335,9 +335,6 @@ class Game {
     const deltaTime = timestamp - this.lastTime;
     this.lastTime = timestamp;
 
-    // Normalize delta time: 1.0 at 60fps, 0.5 at 120fps
-    const dt = deltaTime / 16.667;
-
     // Calculate FPS
     this.frameCount++;
     if (timestamp - this.fpsLastTime >= 1000) {
@@ -346,7 +343,7 @@ class Game {
       this.fpsLastTime = timestamp;
     }
 
-    this.update(deltaTime, dt, timestamp);
+    this.update(deltaTime, timestamp);
     this.render();
 
     requestAnimationFrame(this.gameLoop);

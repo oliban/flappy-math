@@ -68,24 +68,24 @@ export function createPipe(answers, canvasWidth) {
     passed: false,
     damagedPlayer: false, // Prevents multiple head-on damage from same pipe
 
-    update(speed, dt = 1) {
-      this.x -= speed * dt;
+    update(speed) {
+      this.x -= speed;
 
       // Update gap animations
       this.gaps.forEach(gap => {
         if (gap.hit) {
           if (gap.hitResult === 'correct') {
             // Fade out correct answer
-            gap.fadeOpacity = Math.max(0, gap.fadeOpacity - 0.15 * dt);
+            gap.fadeOpacity = Math.max(0, gap.fadeOpacity - 0.15);
           } else if (gap.hitResult === 'wrong') {
             // Update explosion particles (in-place removal, return to pool)
             for (let i = gap.explosionParticles.length - 1; i >= 0; i--) {
               const p = gap.explosionParticles[i];
-              p.x += p.vx * dt;
-              p.y += p.vy * dt;
-              p.vy += 0.3 * dt; // gravity
-              p.life -= 0.03 * dt;
-              p.size *= Math.pow(0.96, dt);
+              p.x += p.vx;
+              p.y += p.vy;
+              p.vy += 0.3; // gravity
+              p.life -= 0.03;
+              p.size *= 0.96;
               if (p.life <= 0) {
                 releaseParticle(p);
                 gap.explosionParticles.splice(i, 1);

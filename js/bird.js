@@ -26,18 +26,17 @@ export function createBird() {
     rotation: 0,
     targetRotation: 0,
     wingPhase: 0,
-    bounceTime: 0, // ms remaining in bounce/hurt state
+    bounceTimer: 0,
     isHurt: false,
 
-    update(dt = 1, deltaTime = 16.667) {
-      this.velocity += GRAVITY * dt;
-      this.y += this.velocity * dt;
+    update() {
+      this.velocity += GRAVITY;
+      this.y += this.velocity;
 
-      // Update bounce timer (time-based)
-      if (this.bounceTime > 0) {
-        this.bounceTime -= deltaTime;
-        if (this.bounceTime <= 0) {
-          this.bounceTime = 0;
+      // Update bounce timer
+      if (this.bounceTimer > 0) {
+        this.bounceTimer--;
+        if (this.bounceTimer === 0) {
           this.isHurt = false;
         }
       }
@@ -45,10 +44,10 @@ export function createBird() {
       // Smooth rotation based on velocity
       // Nose up when going up, nose down when falling
       this.targetRotation = Math.min(Math.max(this.velocity * 0.4, -1.3), 2.2);
-      this.rotation += (this.targetRotation - this.rotation) * 0.25 * dt;
+      this.rotation += (this.targetRotation - this.rotation) * 0.25;
 
       // Wing flap animation
-      this.wingPhase += 0.15 * dt;
+      this.wingPhase += 0.15;
 
       // Keep bird within screen bounds
       if (this.y < this.size / 2) {

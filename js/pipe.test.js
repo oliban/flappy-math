@@ -51,37 +51,4 @@ describe('Pipe', () => {
     pipe.markPassed();
     expect(pipe.passed).toBe(true);
   });
-
-  test('dt=0.5 produces half the movement of dt=1', () => {
-    const pipe1 = createPipe([10, 20, 30], TEST_CANVAS_WIDTH);
-    const pipe2 = createPipe([10, 20, 30], TEST_CANVAS_WIDTH);
-    const speed = 5;
-
-    // Update at 60fps (dt=1)
-    pipe1.update(speed, 1);
-    const movement60 = TEST_CANVAS_WIDTH - pipe1.x;
-
-    // Update at 120fps (dt=0.5)
-    pipe2.update(speed, 0.5);
-    const movement120 = TEST_CANVAS_WIDTH - pipe2.x;
-
-    // At half dt, should get half the movement
-    expect(movement120).toBeCloseTo(movement60 / 2, 5);
-  });
-
-  test('two dt=0.5 updates equal one dt=1 update', () => {
-    const pipe1 = createPipe([10, 20, 30], TEST_CANVAS_WIDTH);
-    const pipe2 = createPipe([10, 20, 30], TEST_CANVAS_WIDTH);
-    const speed = 5;
-
-    // One 60fps frame
-    pipe1.update(speed, 1);
-
-    // Two 120fps frames
-    pipe2.update(speed, 0.5);
-    pipe2.update(speed, 0.5);
-
-    // Should be equal
-    expect(pipe2.x).toBeCloseTo(pipe1.x, 5);
-  });
 });
