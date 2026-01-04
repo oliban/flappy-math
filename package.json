@@ -1,0 +1,12 @@
+{
+  "name": "flappy-math",
+  "version": "1.0.0",
+  "description": "Flappy Bird-style game for practicing multiplication tables",
+  "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.16"
+  }
+}
