@@ -210,17 +210,17 @@ export function createPipe(answers, canvasWidth) {
 
       // Render explosion particles for wrong answers
       if (gap.hit && gap.hitResult === 'wrong') {
-        gap.explosionParticles.forEach(p => {
+        const particles = gap.explosionParticles;
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
           ctx.globalAlpha = p.life;
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
           ctx.fill();
-        });
+        }
         ctx.globalAlpha = 1;
-
         // Don't draw bubble after explosion starts
-        if (gap.explosionParticles.length === 0) return;
         return;
       }
 

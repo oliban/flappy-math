@@ -92,6 +92,7 @@ class Game {
     this.skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.canvasHeight);
     this.skyGradient.addColorStop(0, '#87CEEB');
     this.skyGradient.addColorStop(1, '#E0F6FF');
+
   }
 
   setupInput() {
@@ -663,12 +664,9 @@ class Game {
         ctx.fill();
       }
 
-      // Cell background
+      // Cell background (flat colors - gradients are barely visible at this size)
       if (isSelected) {
-        const gradient = ctx.createLinearGradient(cellX, cellY, cellX, cellY + cellHeight);
-        gradient.addColorStop(0, '#66BB6A');
-        gradient.addColorStop(1, '#43A047');
-        ctx.fillStyle = gradient;
+        ctx.fillStyle = '#4CAF50';
       } else if (bestSpeed > 0) {
         ctx.fillStyle = '#C8E6C9';
       } else {
@@ -731,11 +729,8 @@ class Game {
     this.roundRect(ctx, btnX + 3, btnY + 3, btnWidth, btnHeight, 12);
     ctx.fill();
 
-    // Button gradient
-    const btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnHeight);
-    btnGradient.addColorStop(0, '#66BB6A');
-    btnGradient.addColorStop(1, '#43A047');
-    ctx.fillStyle = btnGradient;
+    // Button (flat color - gradient barely visible)
+    ctx.fillStyle = '#4CAF50';
     this.roundRect(ctx, btnX, btnY, btnWidth, btnHeight, 12);
     ctx.fill();
 
@@ -806,11 +801,8 @@ class Game {
     this.roundRect(ctx, hudX + 3, hudY + 3, hudWidth, hudHeight, hudRadius);
     ctx.fill();
 
-    // HUD background with gradient (semi-transparent)
-    const hudGradient = ctx.createLinearGradient(hudX, hudY, hudX, hudY + hudHeight);
-    hudGradient.addColorStop(0, 'rgba(30, 40, 50, 0.7)');
-    hudGradient.addColorStop(1, 'rgba(20, 25, 35, 0.75)');
-    ctx.fillStyle = hudGradient;
+    // HUD background (flat color - gradient barely visible)
+    ctx.fillStyle = 'rgba(25, 32, 42, 0.72)';
     this.roundRect(ctx, hudX, hudY, hudWidth, hudHeight, hudRadius);
     ctx.fill();
 
@@ -868,11 +860,8 @@ class Game {
       this.roundRect(ctx, problemX + 3, problemY + 3, problemWidth, problemHeight, 25);
       ctx.fill();
 
-      // Background
-      const problemGradient = ctx.createLinearGradient(problemX, problemY, problemX, problemY + problemHeight);
-      problemGradient.addColorStop(0, 'rgba(30, 40, 50, 0.95)');
-      problemGradient.addColorStop(1, 'rgba(20, 25, 35, 0.98)');
-      ctx.fillStyle = problemGradient;
+      // Background (flat color - gradient barely visible)
+      ctx.fillStyle = 'rgba(25, 32, 42, 0.96)';
       this.roundRect(ctx, problemX, problemY, problemWidth, problemHeight, 25);
       ctx.fill();
 
@@ -912,11 +901,8 @@ class Game {
       this.roundRect(ctx, cardX + 5, cardY + 5, cardWidth, cardHeight, 20);
       ctx.fill();
 
-      // Card background with gold gradient
-      const cardGradient = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardHeight);
-      cardGradient.addColorStop(0, '#FFF9E6');
-      cardGradient.addColorStop(1, '#FFE4A0');
-      ctx.fillStyle = cardGradient;
+      // Card background (flat gold color)
+      ctx.fillStyle = '#FFEFC3';
       this.roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 20);
       ctx.fill();
 
@@ -959,11 +945,8 @@ class Game {
       this.roundRect(ctx, cardX + 5, cardY + 5, cardWidth, cardHeight, 20);
       ctx.fill();
 
-      // Card background
-      const cardGradient = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardHeight);
-      cardGradient.addColorStop(0, '#FFFFFF');
-      cardGradient.addColorStop(1, '#F0F0F0');
-      ctx.fillStyle = cardGradient;
+      // Card background (flat color)
+      ctx.fillStyle = '#F8F8F8';
       this.roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 20);
       ctx.fill();
 
@@ -1007,11 +990,8 @@ class Game {
     const btnWidth = Math.max(200, textWidth + 50);
     const btnX = centerX - btnWidth / 2;
 
-    // Button background with subtle gradient
-    const btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnHeight);
-    btnGradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-    btnGradient.addColorStop(1, 'rgba(255, 255, 255, 0.15)');
-    ctx.fillStyle = btnGradient;
+    // Button background (flat color)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     this.roundRect(ctx, btnX, btnY, btnWidth, btnHeight, 22);
     ctx.fill();
 
