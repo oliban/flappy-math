@@ -3,25 +3,33 @@ import { createVoicePlayer } from './voice.js';
 
 describe('Voice Player', () => {
   let mockStorage;
-  let mockSynthesis;
-  let MockUtterance;
+  let MockAudio;
+  let audioInstances;
 
   beforeEach(() => {
+    audioInstances = [];
+
     mockStorage = {
       getItem: vi.fn(),
       setItem: vi.fn()
     };
 
-    mockSynthesis = {
-      speak: vi.fn(),
-      cancel: vi.fn()
-    };
-
-    MockUtterance = class {
-      constructor() {
-        this.lang = '';
-        this.rate = 1;
-        this.pitch = 1;
+    MockAudio = class {
+      constructor(src) {
+        this.src = src;
+        this.onended = null;
+        this.onerror = null;
+        audioInstances.push(this);
+      }
+      load() {}
+      play() {
+        // Simulate immediate playback completion
+        setTimeout(() => this.onended && this.onended(), 0);
+        return Promise.resolve();
+      }
+      cloneNode() {
+        const clone = new MockAudio(this.src);
+        return clone;
       }
     };
   });
@@ -29,7 +37,7 @@ describe('Voice Player', () => {
   describe('initialization', () => {
     test('defaults to enabled when no saved preference', () => {
       mockStorage.getItem.mockReturnValue(null);
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.init();
 
       expect(player.isEnabled()).toBe(true);
@@ -37,7 +45,7 @@ describe('Voice Player', () => {
 
     test('loads enabled=true from localStorage', () => {
       mockStorage.getItem.mockReturnValue('true');
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.init();
 
       expect(player.isEnabled()).toBe(true);
@@ -45,7 +53,7 @@ describe('Voice Player', () => {
 
     test('loads enabled=false from localStorage', () => {
       mockStorage.getItem.mockReturnValue('false');
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.init();
 
       expect(player.isEnabled()).toBe(false);
@@ -54,7 +62,7 @@ describe('Voice Player', () => {
 
   describe('toggle and persistence', () => {
     test('toggle switches enabled state', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+      const player = createVoicePlayer(mockStorage, MockAudio);
 
       expect(player.isEnabled()).toBe(true);
       player.toggle();
@@ -64,7 +72,7 @@ describe('Voice Player', () => {
     });
 
     test('setEnabled saves to localStorage', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+      const player = createVoicePlayer(mockStorage, MockAudio);
 
       player.setEnabled(false);
       expect(mockStorage.setItem).toHaveBeenCalledWith('flappy-math-voice', 'false');
@@ -74,216 +82,113 @@ describe('Voice Player', () => {
     });
 
     test('toggle returns new enabled state', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+      const player = createVoicePlayer(mockStorage, MockAudio);
 
       expect(player.toggle()).toBe(false);
       expect(player.toggle()).toBe(true);
     });
   });
 
-  describe('speech control', () => {
+  describe('audio playback', () => {
     test('speakQuestion does nothing when disabled', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis, MockUtterance);
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.setEnabled(false);
       player.speakQuestion(12, 7);
 
-      expect(mockSynthesis.speak).not.toHaveBeenCalled();
+      expect(audioInstances.length).toBe(0);
     });
 
     test('speakAnswer does nothing when disabled', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis, MockUtterance);
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.setEnabled(false);
       player.speakAnswer(84);
 
-      expect(mockSynthesis.speak).not.toHaveBeenCalled();
+      expect(audioInstances.length).toBe(0);
     });
 
-    test('speakQuestion calls synthesis.speak when enabled', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis, MockUtterance);
+    test('speakQuestion loads audio files when enabled', async () => {
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.speakQuestion(12, 7);
 
-      expect(mockSynthesis.speak).toHaveBeenCalled();
+      // Wait for all audio to be queued (setTimeout in mock)
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      // Should load 3 audio files: number, times, number
+      const srcs = audioInstances.map(a => a.src);
+      expect(srcs).toContain('sounds/numbers/en/en_num_12.mp3');
+      expect(srcs).toContain('sounds/numbers/en/en_times.mp3');
+      expect(srcs).toContain('sounds/numbers/en/en_num_7.mp3');
     });
 
-    test('speakAnswer calls synthesis.speak when enabled', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis, MockUtterance);
+    test('speakAnswer loads audio file when enabled', () => {
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.speakAnswer(84);
 
-      expect(mockSynthesis.speak).toHaveBeenCalled();
-    });
-
-    test('speaks without cancelling to allow queuing', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis, MockUtterance);
-      player.speakQuestion(5, 3);
-
-      expect(mockSynthesis.cancel).not.toHaveBeenCalled();
-      expect(mockSynthesis.speak).toHaveBeenCalled();
-    });
-  });
-
-  describe('English number-to-words', () => {
-    test('converts single digit numbers', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('en');
-
-      expect(player.numberToWords(1)).toBe('one');
-      expect(player.numberToWords(5)).toBe('five');
-      expect(player.numberToWords(9)).toBe('nine');
-    });
-
-    test('converts teens', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('en');
-
-      expect(player.numberToWords(10)).toBe('ten');
-      expect(player.numberToWords(11)).toBe('eleven');
-      expect(player.numberToWords(12)).toBe('twelve');
-      expect(player.numberToWords(13)).toBe('thirteen');
-      expect(player.numberToWords(19)).toBe('nineteen');
-    });
-
-    test('converts decades', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('en');
-
-      expect(player.numberToWords(20)).toBe('twenty');
-      expect(player.numberToWords(30)).toBe('thirty');
-      expect(player.numberToWords(50)).toBe('fifty');
-      expect(player.numberToWords(90)).toBe('ninety');
-    });
-
-    test('converts compound numbers 21-99', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('en');
-
-      expect(player.numberToWords(21)).toBe('twenty-one');
-      expect(player.numberToWords(42)).toBe('forty-two');
-      expect(player.numberToWords(84)).toBe('eighty-four');
-      expect(player.numberToWords(99)).toBe('ninety-nine');
-    });
-
-    test('converts 100', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('en');
-
-      expect(player.numberToWords(100)).toBe('one hundred');
-    });
-
-    test('converts numbers 101-144', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('en');
-
-      expect(player.numberToWords(101)).toBe('one hundred one');
-      expect(player.numberToWords(110)).toBe('one hundred ten');
-      expect(player.numberToWords(112)).toBe('one hundred twelve');
-      expect(player.numberToWords(120)).toBe('one hundred twenty');
-      expect(player.numberToWords(121)).toBe('one hundred twenty-one');
-      expect(player.numberToWords(144)).toBe('one hundred forty-four');
-    });
-  });
-
-  describe('Swedish number-to-words', () => {
-    test('converts single digit numbers', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(1)).toBe('ett');
-      expect(player.numberToWords(2)).toBe('två');
-      expect(player.numberToWords(5)).toBe('fem');
-      expect(player.numberToWords(9)).toBe('nio');
-    });
-
-    test('converts 10-12', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(10)).toBe('tio');
-      expect(player.numberToWords(11)).toBe('elva');
-      expect(player.numberToWords(12)).toBe('tolv');
-    });
-
-    test('converts teens 13-19', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(13)).toBe('tretton');
-      expect(player.numberToWords(14)).toBe('fjorton');
-      expect(player.numberToWords(19)).toBe('nitton');
-    });
-
-    test('converts decades', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(20)).toBe('tjugo');
-      expect(player.numberToWords(30)).toBe('trettio');
-      expect(player.numberToWords(50)).toBe('femtio');
-      expect(player.numberToWords(90)).toBe('nittio');
-    });
-
-    test('converts compound numbers 21-99', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(21)).toBe('tjugoett');
-      expect(player.numberToWords(42)).toBe('fyrtiotvå');
-      expect(player.numberToWords(84)).toBe('åttiofyra');
-      expect(player.numberToWords(99)).toBe('nittionio');
-    });
-
-    test('converts 100', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(100)).toBe('hundra');
-    });
-
-    test('converts numbers 101-144', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      player.setLanguage('sv');
-
-      expect(player.numberToWords(101)).toBe('hundraett');
-      expect(player.numberToWords(110)).toBe('hundratio');
-      expect(player.numberToWords(112)).toBe('hundratolv');
-      expect(player.numberToWords(120)).toBe('hundratjugo');
-      expect(player.numberToWords(121)).toBe('hundratjugoett');
-      expect(player.numberToWords(144)).toBe('hundrafyrtiofyra');
+      const srcs = audioInstances.map(a => a.src);
+      expect(srcs).toContain('sounds/numbers/en/en_num_84.mp3');
     });
   });
 
   describe('language switching', () => {
-    test('setLanguage changes number conversion', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-
-      player.setLanguage('en');
-      expect(player.numberToWords(7)).toBe('seven');
-
+    test('setLanguage changes audio paths to Swedish', async () => {
+      const player = createVoicePlayer(mockStorage, MockAudio);
       player.setLanguage('sv');
-      expect(player.numberToWords(7)).toBe('sju');
+      player.speakQuestion(5, 3);
+
+      // Wait for all audio to be queued
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const srcs = audioInstances.map(a => a.src);
+      expect(srcs).toContain('sounds/numbers/sv/sv_num_5.mp3');
+      expect(srcs).toContain('sounds/numbers/sv/sv_times.mp3');
+      expect(srcs).toContain('sounds/numbers/sv/sv_num_3.mp3');
     });
 
-    test('defaults to English', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
-      expect(player.numberToWords(7)).toBe('seven');
+    test('defaults to English audio paths', () => {
+      const player = createVoicePlayer(mockStorage, MockAudio);
+      player.speakAnswer(7);
+
+      const srcs = audioInstances.map(a => a.src);
+      expect(srcs).toContain('sounds/numbers/en/en_num_7.mp3');
     });
   });
 
-  describe('synthesis availability', () => {
-    test('isAvailable returns true when synthesis exists', () => {
-      const player = createVoicePlayer(mockStorage, mockSynthesis);
+  describe('audio availability', () => {
+    test('isAvailable returns true when Audio exists', () => {
+      const player = createVoicePlayer(mockStorage, MockAudio);
       expect(player.isAvailable()).toBe(true);
     });
 
-    test('isAvailable returns false when synthesis is null', () => {
+    test('isAvailable returns false when Audio is null', () => {
       const player = createVoicePlayer(mockStorage, null);
       expect(player.isAvailable()).toBe(false);
     });
 
-    test('speak does nothing when synthesis is null', () => {
+    test('speakQuestion does nothing when Audio is null', () => {
       const player = createVoicePlayer(mockStorage, null);
       // Should not throw
       player.speakQuestion(12, 7);
       player.speakAnswer(84);
+    });
+  });
+
+  describe('preloading', () => {
+    test('preload loads specified numbers and times', () => {
+      const player = createVoicePlayer(mockStorage, MockAudio);
+      player.preload([1, 2, 3, 12]);
+
+      const srcs = audioInstances.map(a => a.src);
+      expect(srcs).toContain('sounds/numbers/en/en_times.mp3');
+      expect(srcs).toContain('sounds/numbers/en/en_num_1.mp3');
+      expect(srcs).toContain('sounds/numbers/en/en_num_2.mp3');
+      expect(srcs).toContain('sounds/numbers/en/en_num_3.mp3');
+      expect(srcs).toContain('sounds/numbers/en/en_num_12.mp3');
+    });
+
+    test('preload does nothing when Audio is null', () => {
+      const player = createVoicePlayer(mockStorage, null);
+      // Should not throw
+      player.preload([1, 2, 3]);
     });
   });
 });

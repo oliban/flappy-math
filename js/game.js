@@ -52,6 +52,9 @@ class Game {
     this.fpsLastTime = 0;
     this.currentFPS = 0;
 
+    // Preload audio for all tables (runs in background)
+    this.preloadAllVoiceAudio();
+
     requestAnimationFrame(this.gameLoop);
   }
 
@@ -81,9 +84,9 @@ class Game {
     this.canvas.width = this.canvasWidth;
     this.canvas.height = this.canvasHeight;
 
-    // CSS scales canvas to fill viewport
-    this.canvas.style.width = '100vw';
-    this.canvas.style.height = '100vh';
+    // CSS scales canvas to fill viewport (use px for mobile Safari compatibility)
+    this.canvas.style.width = `${window.innerWidth}px`;
+    this.canvas.style.height = `${window.innerHeight}px`;
 
     // Cache sky gradient (recreate on resize)
     this.skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.canvasHeight);
@@ -147,9 +150,8 @@ class Game {
   }
 
   handleClick(e) {
-    // Unlock audio/voice on ANY click (must be first!)
+    // Unlock audio on click (voice doesn't need unlock - speak happens in user gesture)
     this.sound.unlock();
-    this.voice.unlock();
 
     const rect = this.canvas.getBoundingClientRect();
     // Scale coordinates to match internal canvas dimensions
@@ -180,15 +182,18 @@ class Game {
         }
       }
 
-      // Table grid dimensions (must match renderMenu)
-      const cardY = 145;
+      // Compact layout dimensions (must match renderMenu)
+      const compact = this.isMobile ? 0.85 : 1;
+      const baseY = this.isMobile ? 30 : 80;
+      const cardY = baseY + 50;
+      const cardHeight = Math.round(200 * compact);
       const cols = 6;
-      const cellWidth = 65;
-      const cellHeight = 55;
-      const gap = 8;
+      const cellWidth = Math.round(65 * compact);
+      const cellHeight = Math.round(55 * compact);
+      const gap = Math.round(8 * compact);
       const gridWidth = cols * cellWidth + (cols - 1) * gap;
       const gridStartX = centerX - gridWidth / 2;
-      const gridStartY = cardY + 50;
+      const gridStartY = cardY + Math.round(45 * compact);
 
       for (let i = 0; i < 11; i++) {
         const table = i + 2;
@@ -204,8 +209,9 @@ class Game {
       }
 
       // Speed arrows
-      const speedCardY = 360;
-      if (y >= speedCardY + 40 && y <= speedCardY + 70) {
+      const speedCardY = cardY + cardHeight + Math.round(15 * compact);
+      const speedCardHeight = Math.round(70 * compact);
+      if (y >= speedCardY + Math.round(35 * compact) && y <= speedCardY + Math.round(65 * compact)) {
         if (x >= centerX - 80 && x <= centerX - 40) {
           this.selectedSpeed = Math.max(this.selectedSpeed - 1, 1);
           return;
@@ -218,8 +224,9 @@ class Game {
 
       // Check if clicking start button
       const btnX = centerX - 110;
-      const btnY = 460;
-      if (x >= btnX && x <= btnX + 220 && y >= btnY && y <= btnY + 55) {
+      const btnY = speedCardY + speedCardHeight + Math.round(12 * compact);
+      const btnHeight = Math.round(50 * compact);
+      if (x >= btnX && x <= btnX + 220 && y >= btnY && y <= btnY + btnHeight) {
         this.startGame();
       }
     } else if (this.state.current() === STATES.PLAYING) {
@@ -264,6 +271,25 @@ class Game {
     this.fadeOut = 0;
     this.isFadingOut = false;
     this.fillScreenWithPipes();
+
+    // Speak first question immediately (user clicked Start, so we have gesture context)
+    if (this.currentProblem) {
+      this.voice.speakQuestion(this.currentProblem.a, this.currentProblem.b);
+      this.currentProblem.spoken = true;
+    }
+  }
+
+  preloadAllVoiceAudio() {
+    // Collect all numbers needed for all tables (1-12 * 1-12)
+    const numbers = new Set();
+    for (let a = 1; a <= 12; a++) {
+      for (let b = 1; b <= 12; b++) {
+        numbers.add(a);
+        numbers.add(b);
+        numbers.add(a * b);
+      }
+    }
+    this.voice.preload([...numbers]);
   }
 
   fillScreenWithPipes() {
@@ -413,8 +439,26 @@ class Game {
 
         if (isCorrect) {
           this.scoring.correctAnswer();
-          this.sound.play('correct');
-          this.voice.speakAnswer(result.answer);
+
+          if (this.selectedSpeed <= 7) {
+            // Lower speeds: play sound, speak answer, then question after delay
+            this.sound.play('correct');
+            this.voice.speakAnswer(result.answer);
+            if (this.currentProblem) {
+              const problem = this.currentProblem;
+              problem.spoken = true; // Mark as spoken immediately to prevent double-speak
+              setTimeout(() => {
+                this.voice.speakQuestion(problem.a, problem.b);
+              }, 1000);
+            }
+          } else {
+            // Higher speeds: speak question FIRST (immediately), then sound
+            if (this.currentProblem) {
+              this.voice.speakQuestion(this.currentProblem.a, this.currentProblem.b);
+              this.currentProblem.spoken = true;
+            }
+            this.sound.play('correct');
+          }
 
           // Check mastery
           if (this.scoring.hasMastered()) {
@@ -426,7 +470,26 @@ class Game {
           }
         } else {
           this.scoring.wrongAnswer();
-          this.sound.play('wrong');
+
+          if (this.selectedSpeed <= 7) {
+            // Lower speeds: play sound, then question after delay
+            this.sound.play('wrong');
+            if (this.currentProblem && !this.scoring.isGameOver()) {
+              const problem = this.currentProblem;
+              problem.spoken = true;
+              setTimeout(() => {
+                this.voice.speakQuestion(problem.a, problem.b);
+              }, 1000);
+            }
+          } else {
+            // Higher speeds: speak question FIRST, then sound
+            if (this.currentProblem && !this.scoring.isGameOver()) {
+              this.voice.speakQuestion(this.currentProblem.a, this.currentProblem.b);
+              this.currentProblem.spoken = true;
+            }
+            this.sound.play('wrong');
+          }
+
           if (this.scoring.isGameOver()) {
             this.startFadeOut();
           }
@@ -535,25 +598,29 @@ class Game {
       }
     });
 
+    // Scale factor for compact mobile layout
+    const compact = this.isMobile ? 0.85 : 1;
+    const baseY = this.isMobile ? 30 : 80;
+
     // Title with shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.font = 'bold 56px system-ui';
+    ctx.font = `bold ${Math.round(56 * compact)}px system-ui`;
     ctx.textAlign = 'center';
-    ctx.fillText(t('title'), centerX + 3, 83);
+    ctx.fillText(t('title'), centerX + 3, baseY + 3);
 
     ctx.fillStyle = '#2D5A1F';
-    ctx.fillText(t('title'), centerX, 80);
+    ctx.fillText(t('title'), centerX, baseY);
 
     // Subtitle
     ctx.fillStyle = '#555';
-    ctx.font = '18px system-ui';
-    ctx.fillText(t('subtitle'), centerX, 115);
+    ctx.font = `${Math.round(18 * compact)}px system-ui`;
+    ctx.fillText(t('subtitle'), centerX, baseY + 30);
 
     // Table selection card
     const cardX = centerX - 250;
-    const cardY = 145;
+    const cardY = baseY + 50;
     const cardWidth = 500;
-    const cardHeight = 200;
+    const cardHeight = Math.round(200 * compact);
 
     // Card shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
@@ -572,12 +639,12 @@ class Game {
 
     // Table selection grid - centered
     const cols = 6;
-    const cellWidth = 65;
-    const cellHeight = 55;
-    const gap = 8;
+    const cellWidth = Math.round(65 * compact);
+    const cellHeight = Math.round(55 * compact);
+    const gap = Math.round(8 * compact);
     const gridWidth = cols * cellWidth + (cols - 1) * gap;
     const gridStartX = centerX - gridWidth / 2;
-    const gridStartY = cardY + 50;
+    const gridStartY = cardY + Math.round(45 * compact);
 
     for (let i = 0; i < 11; i++) {
       const table = i + 2;
@@ -631,8 +698,8 @@ class Game {
     }
 
     // Speed selector card
-    const speedCardY = 360;
-    const speedCardHeight = 80;
+    const speedCardY = cardY + cardHeight + Math.round(15 * compact);
+    const speedCardHeight = Math.round(70 * compact);
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     this.roundRect(ctx, cardX, speedCardY, cardWidth, speedCardHeight, 15);
@@ -640,24 +707,24 @@ class Game {
 
     // Speed display
     ctx.fillStyle = '#333';
-    ctx.font = 'bold 16px system-ui';
-    ctx.fillText(t('speedLevel'), centerX, speedCardY + 25);
+    ctx.font = `bold ${Math.round(16 * compact)}px system-ui`;
+    ctx.fillText(t('speedLevel'), centerX, speedCardY + Math.round(22 * compact));
 
     // Speed arrows and value
-    ctx.font = '24px system-ui';
+    ctx.font = `${Math.round(24 * compact)}px system-ui`;
     ctx.fillStyle = '#888';
-    ctx.fillText('◀', centerX - 60, speedCardY + 58);
-    ctx.fillText('▶', centerX + 60, speedCardY + 58);
+    ctx.fillText('◀', centerX - 60, speedCardY + Math.round(52 * compact));
+    ctx.fillText('▶', centerX + 60, speedCardY + Math.round(52 * compact));
 
-    ctx.font = 'bold 32px system-ui';
+    ctx.font = `bold ${Math.round(32 * compact)}px system-ui`;
     ctx.fillStyle = '#4CAF50';
-    ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + 55);
+    ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + Math.round(50 * compact));
 
     // Start button
-    const btnY = 455;
+    const btnY = speedCardY + speedCardHeight + Math.round(12 * compact);
     const btnX = centerX - 110;
     const btnWidth = 220;
-    const btnHeight = 55;
+    const btnHeight = Math.round(50 * compact);
 
     // Button shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
@@ -674,14 +741,14 @@ class Game {
 
     // Button text
     ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 26px system-ui';
-    ctx.fillText(t('startGame'), centerX, btnY + 36);
+    ctx.font = `bold ${Math.round(26 * compact)}px system-ui`;
+    ctx.fillText(t('startGame'), centerX, btnY + Math.round(32 * compact));
 
     // Instructions - different for mobile vs desktop
     ctx.fillStyle = '#999';
-    ctx.font = '14px system-ui';
+    ctx.font = `${Math.round(14 * compact)}px system-ui`;
     if (this.isMobile) {
-      ctx.fillText('Tap to start', centerX, btnY + btnHeight + 25);
+      ctx.fillText('Tap to start', centerX, btnY + btnHeight + Math.round(20 * compact));
     } else {
       ctx.fillText('Press SPACE or click to start  •  Arrow keys to adjust', centerX, btnY + btnHeight + 25);
     }
