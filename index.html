@@ -16,6 +16,18 @@
     <canvas id="game-canvas"></canvas>
   </div>
 
+  <div id="name-dialog" class="hidden">
+    <div class="dialog-card">
+      <h2 id="name-dialog-title">Your name</h2>
+      <p id="name-dialog-hint">Shown on the global highscore list</p>
+      <input id="name-input" type="text" maxlength="12" autocomplete="off" autocorrect="off" spellcheck="false">
+      <div class="dialog-buttons">
+        <button id="name-cancel" type="button">Cancel</button>
+        <button id="name-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div id="portrait-warning">
     <div class="rotate-icon">📱</div>
     <h2>Rotate Your Device</h2>

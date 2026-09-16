@@ -1,6 +1,18 @@
-FROM nginx:alpine
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY . /usr/share/nginx/html
-RUN chmod -R 755 /usr/share/nginx/html
+FROM node:22-alpine
+
+WORKDIR /app
+
+# No runtime dependencies - the server uses only the Node standard library.
+COPY package.json ./
+COPY index.html ./
+COPY css ./css
+COPY js ./js
+COPY sounds ./sounds
+COPY server ./server
+
+# Leaderboard data lives on a Fly volume mounted here (see fly.toml).
+ENV DATA_DIR=/data
+ENV PORT=8080
 EXPOSE 8080
-CMD ["nginx", "-g", "daemon off;"]
+
+CMD ["node", "server/server.js"]

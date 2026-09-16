@@ -97,3 +97,87 @@ body {
     padding-right: env(safe-area-inset-right);
   }
 }
+
+/* Name entry dialog (global highscore list) */
+#name-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 25, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+  padding: 20px;
+}
+
+#name-dialog.hidden {
+  display: none;
+}
+
+#name-dialog .dialog-card {
+  background: #FFF;
+  border-radius: 16px;
+  padding: 22px 24px;
+  width: min(360px, 100%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+#name-dialog h2 {
+  font-size: 22px;
+  color: #2D5A1F;
+  margin-bottom: 6px;
+}
+
+#name-dialog p {
+  font-size: 14px;
+  color: #777;
+  margin-bottom: 16px;
+}
+
+#name-dialog input {
+  width: 100%;
+  font-size: 20px;
+  font-family: inherit;
+  text-align: center;
+  padding: 10px 12px;
+  border: 2px solid #DDD;
+  border-radius: 10px;
+  outline: none;
+}
+
+#name-dialog input:focus {
+  border-color: #4CAF50;
+}
+
+#name-dialog .dialog-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+#name-dialog button {
+  flex: 1;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 11px 0;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+#name-dialog #name-cancel {
+  background: #EEE;
+  color: #555;
+}
+
+#name-dialog #name-save {
+  background: #4CAF50;
+  color: #FFF;
+}
+
+#name-dialog #name-save:disabled {
+  background: #BBB;
+  cursor: not-allowed;
+}

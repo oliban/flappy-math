@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { createStorage } from './storage.js';
+import { createStorage, HIGHSCORES_KEY } from './storage.js';
 
 describe('Storage', () => {
   let mockLocalStorage;
@@ -39,6 +39,18 @@ describe('Storage', () => {
   test('returns null when no saved data', () => {
     const loaded = storage.load();
     expect(loaded).toBeNull();
+  });
+
+  test('stores different documents under different keys', () => {
+    const progress = createStorage(mockLocalStorage);
+    const highscores = createStorage(mockLocalStorage, HIGHSCORES_KEY);
+
+    progress.save({ tables: { 2: 1 } });
+    highscores.save({ entries: [{ score: 5 }] });
+
+    expect(progress.load()).toEqual({ tables: { 2: 1 } });
+    expect(highscores.load()).toEqual({ entries: [{ score: 5 }] });
+    expect(mockLocalStorage.data[HIGHSCORES_KEY]).toBeTruthy();
   });
 
   test('handles corrupted data gracefully', () => {

@@ -8,6 +8,7 @@ A Flappy Bird-style game for practicing multiplication tables. Fly through pipes
 - Press **Space** or **Click** to flap and fly upward
 - Use **Arrow keys** or **Number keys** to select multiplication table (2-12) and speed level in the menu
 - Press **Escape** to return to menu
+- Press **H** (or the 🏆 button) to open the highscore lists
 
 **Objective:**
 - Each pipe has 3 gaps with different answer options
@@ -16,12 +17,29 @@ A Flappy Bird-style game for practicing multiplication tables. Fly through pipes
 - Avoid hitting pipes or choosing wrong answers (costs a life)
 - You have 3 lives per game
 
+## Highscores
+
+Two lists, reachable from the menu or the game over screen:
+
+- **My Best (local)** - your own runs, stored in LocalStorage, with a personal
+  best kept per times table. Beating your own record is what earns rewards.
+- **Global** - a shared list served by this app's API, so you can compare with
+  friends. It keeps one (best) run per player per table. Set a name from the
+  highscore screen to appear on it; without a name you still get the full local
+  list. If the server cannot be reached, the global tab says so and the rest of
+  the game carries on.
+
+**Reward:** every time you beat your own personal best for a table, the next
+bird skin unlocks and is equipped right away. There are nine birds to collect.
+
 ## Features
 
 - Multiplication tables 2x through 12x
 - Adjustable speed levels (1-99)
 - Progress tracking with best speed saved per table
 - Mastery system: 10 correct in a row unlocks higher speeds
+- Local and global highscore lists
+- Unlockable bird skins as a reward for beating your own scores
 - Multi-language support (English, Swedish)
 - LocalStorage persistence for progress
 - Smooth bird physics with gravity and flap mechanics
@@ -29,14 +47,39 @@ A Flappy Bird-style game for practicing multiplication tables. Fly through pipes
 ## Setup
 
 ```bash
-# Install dependencies
+# Install dependencies (dev only - the server itself has no dependencies)
 npm install
 
-# Start local development server
-npx serve .
+# Start the game and the highscore API
+npm start
 ```
 
-Then open `http://localhost:3000` in your browser.
+Then open `http://localhost:8080` in your browser. Global scores are written to
+`./data/scores.json` (override with `DATA_DIR`), and the port with `PORT`.
+
+`npx serve .` still works for pure front-end work, but the global list will be
+unavailable because there is no API behind it.
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/scores?table=<2-12>&limit=<1-50>` | Top global scores, optionally for one table |
+| `POST` | `/api/scores` | Submit `{ name, score, table, speed, streak }`; responds with the rank |
+| `GET`  | `/api/health` | Liveness check |
+
+Submissions are validated and rate limited (20/minute per IP), dates are
+assigned server-side, and each table keeps its best 50 entries.
+
+## Deployment
+
+The Fly app serves the game and the API from one Node process. The leaderboard
+lives on a volume, so create it once before the first deploy:
+
+```bash
+fly volumes create flappy_data --size 1
+fly deploy
+```
 
 ## Testing
 

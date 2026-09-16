@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm install          # Install dependencies
-npx serve .          # Run local dev server
+npm install          # Install dependencies (dev only)
+npm start            # Run the game + highscore API (http://localhost:8080)
+npx serve .          # Static-only dev server (global highscores unavailable)
 npm test             # Run tests (watch mode)
 npm test -- --run    # Run tests once
 ```
@@ -19,14 +20,27 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 
 **Key Modules:**
 - `js/game.js` - Main loop, orchestrates updates and rendering
-- `js/state.js` - Game state machine (menu → playing → gameOver)
+- `js/state.js` - Game state machine (menu → playing → gameOver, plus highscores)
 - `js/bird.js` - Bird physics (gravity, flap)
 - `js/pipe.js` - Pipes with 3 answer gaps
 - `js/math.js` - Problem generation (correct + plausible wrong answers)
 - `js/collision.js` - Bird vs gap/pipe detection
 - `js/scoring.js` - Score, streak, lives
 - `js/progress.js` - Mastery tracking per table/speed
-- `js/storage.js` - LocalStorage persistence
+- `js/storage.js` - LocalStorage persistence (one factory per stored document)
+- `js/highscores.js` - Local highscore list and personal bests per table
+- `js/skins.js` - Bird skins, unlocked by beating a personal best
+- `js/globalScores.js` - Client for the shared leaderboard API
+- `js/player.js` - Player name used on the global list
+- `server/server.js` - Static file + API server (Node stdlib only)
+- `server/scores.js` - Global leaderboard store: validation, ranking, capping
+- `server/rateLimit.js` - Per-IP submission limiting
+
+**Highscores:**
+- Local list (LocalStorage) holds the top 20 runs plus a personal best per table
+- Beating a local personal best unlocks the next bird skin - the only reward path
+- Global list lives on the server (`DATA_DIR/scores.json`), one best run per
+  player per table, and degrades to an "unavailable" message when offline
 
 **Progression System:**
 - Tables 2×-12×, all accessible from start

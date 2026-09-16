@@ -1,4 +1,4 @@
-import { BASE_WIDTH, BASE_HEIGHT, BASE_SPEED, SPEED_INCREMENT, PIPE_SPAWN_INTERVAL } from './constants.js';
+import { BASE_WIDTH, BASE_HEIGHT, BASE_SPEED, SPEED_INCREMENT, PIPE_SPAWN_INTERVAL, MIN_SPEED, MAX_SPEED } from './constants.js';
 import { createGameState, STATES } from './state.js';
 import { createBird } from './bird.js';
 import { createPipe } from './pipe.js';
@@ -6,7 +6,12 @@ import { generateProblemForTable } from './math.js';
 import { checkCollision, CollisionResult } from './collision.js';
 import { createScoring } from './scoring.js';
 import { createProgress } from './progress.js';
-import { createStorage } from './storage.js';
+import { createStorage, HIGHSCORES_KEY, SKINS_KEY } from './storage.js';
+import { createHighscores } from './highscores.js';
+import { createSkins, SKINS } from './skins.js';
+import { createGlobalScores } from './globalScores.js';
+import { createPlayer } from './player.js';
+import { drawBirdShape } from './bird.js';
 import { createSoundPlayer } from './sound.js';
 import { createVoicePlayer } from './voice.js';
 import { t, setLanguage, getLanguage, getAvailableLanguages, initLanguage } from './i18n.js';
@@ -23,6 +28,15 @@ class Game {
     this.scoring = createScoring();
     this.progress = createProgress();
     this.storage = createStorage();
+
+    // Highscores: a local list to beat your own runs, a global one to compare
+    // with friends. Rewards (bird skins) come from the local list only.
+    this.highscores = createHighscores();
+    this.highscoreStorage = createStorage(window.localStorage, HIGHSCORES_KEY);
+    this.skins = createSkins();
+    this.skinStorage = createStorage(window.localStorage, SKINS_KEY);
+    this.player = createPlayer();
+    this.globalScores = createGlobalScores();
     this.sound = createSoundPlayer();
     this.voice = createVoicePlayer();
     this.voice.init();
@@ -37,12 +51,24 @@ class Game {
     this.fadeOut = 0; // 0 = no fade, increases to 1 over 2 seconds
     this.isFadingOut = false;
 
+    // Highscore screen state
+    this.highscoreTab = 'local'; // 'local' | 'global'
+    this.highscoreShowAllTables = false;
+    this.globalList = { status: 'idle', entries: [], error: null };
+    this.globalRequestId = 0;
+
+    // Result of the run that just ended
+    this.lastResult = null;       // { rank, isPersonalBest, previousBest, score }
+    this.unlockedSkin = null;     // skin unlocked by beating a personal best
+    this.globalSubmission = null; // { status, rank }
+
     // Detect mobile/touch devices
     this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
     this.loadProgress();
     this.setupCanvas();
     this.setupInput();
+    this.setupNameDialog();
 
     this.lastTime = 0;
     this.gameLoop = this.gameLoop.bind(this);
@@ -63,10 +89,31 @@ class Game {
     if (saved) {
       this.progress.import(saved);
     }
+
+    const savedHighscores = this.highscoreStorage.load();
+    if (savedHighscores) {
+      this.highscores.import(savedHighscores);
+    }
+
+    const savedSkins = this.skinStorage.load();
+    if (savedSkins) {
+      this.skins.import(savedSkins);
+    }
+
+    this.player.load();
+    this.bird.setColors(this.skins.getSelected().colors);
   }
 
   saveProgress() {
     this.storage.save(this.progress.export());
+  }
+
+  saveHighscores() {
+    this.highscoreStorage.save(this.highscores.export());
+  }
+
+  saveSkins() {
+    this.skinStorage.save(this.skins.export());
   }
 
   setupCanvas() {
@@ -94,15 +141,113 @@ class Game {
     this.skyGradient.addColorStop(1, '#E0F6FF');
   }
 
+  // Single source of truth for menu geometry, shared by rendering and hit testing.
+  getMenuLayout() {
+    const centerX = this.canvasWidth / 2;
+    const compact = this.isMobile ? 0.85 : 1;
+    const baseY = this.isMobile ? 30 : 80;
+
+    const cardWidth = 500;
+    const cardX = centerX - cardWidth / 2;
+    const cardY = baseY + 50;
+    const cardHeight = Math.round(200 * compact);
+
+    const cols = 6;
+    const cellWidth = Math.round(65 * compact);
+    const cellHeight = Math.round(55 * compact);
+    const gap = Math.round(8 * compact);
+    const gridWidth = cols * cellWidth + (cols - 1) * gap;
+    const gridStartX = centerX - gridWidth / 2;
+    const gridStartY = cardY + Math.round(45 * compact);
+
+    const speedCardY = cardY + cardHeight + Math.round(15 * compact);
+    const speedCardHeight = Math.round(70 * compact);
+
+    const btnY = speedCardY + speedCardHeight + Math.round(12 * compact);
+    const btnHeight = Math.round(50 * compact);
+    const btnWidth = 220;
+    const startBtnX = centerX - btnWidth - 10;
+    const highscoreBtnX = centerX + 10;
+
+    const skinSize = Math.round(34 * compact);
+    const skinGap = Math.round(6 * compact);
+    const skinRowWidth = SKINS.length * skinSize + (SKINS.length - 1) * skinGap;
+    const skinStartX = centerX - skinRowWidth / 2;
+    const skinY = btnY + btnHeight + Math.round(20 * compact);
+
+    return {
+      centerX, compact, baseY,
+      cardX, cardY, cardWidth, cardHeight,
+      cols, cellWidth, cellHeight, gap, gridStartX, gridStartY,
+      speedCardY, speedCardHeight,
+      btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX,
+      skinSize, skinGap, skinStartX, skinY
+    };
+  }
+
+  // Geometry of the highscore screen, shared by rendering and hit testing.
+  getHighscoreLayout() {
+    const centerX = this.canvasWidth / 2;
+    const compact = this.isMobile ? 0.85 : 1;
+
+    const panelWidth = Math.min(560, this.canvasWidth - 40);
+    const panelX = centerX - panelWidth / 2;
+    const panelY = this.isMobile ? 16 : 36;
+    const panelHeight = this.canvasHeight - panelY * 2;
+
+    const tabHeight = Math.round(34 * compact);
+    const tabY = panelY + Math.round(54 * compact);
+    const tabWidth = Math.round(panelWidth / 2) - 26;
+    const localTabX = panelX + 20;
+    const globalTabX = panelX + Math.round(panelWidth / 2) + 6;
+
+    const filterY = tabY + tabHeight + Math.round(10 * compact);
+    const filterHeight = Math.round(26 * compact);
+    const filterWidth = Math.round(120 * compact);
+    const filterX = centerX - filterWidth / 2;
+
+    const footerHeight = Math.round(42 * compact);
+    const footerY = panelY + panelHeight - footerHeight - 14;
+    const backBtnWidth = Math.round(140 * compact);
+    const backBtnX = panelX + panelWidth - backBtnWidth - 20;
+    const nameBtnWidth = Math.round(150 * compact);
+    const nameBtnX = panelX + 20;
+
+    const rowsY = filterY + filterHeight + Math.round(14 * compact);
+    const rowHeight = Math.round(30 * compact);
+    const maxRows = Math.max(1, Math.min(10, Math.floor((footerY - 12 - rowsY) / rowHeight)));
+
+    return {
+      centerX, compact,
+      panelX, panelY, panelWidth, panelHeight,
+      tabY, tabHeight, tabWidth, localTabX, globalTabX,
+      filterX, filterY, filterWidth, filterHeight,
+      rowsY, rowHeight, maxRows,
+      footerY, footerHeight, backBtnX, backBtnWidth, nameBtnX, nameBtnWidth
+    };
+  }
+
   setupInput() {
     document.addEventListener('keydown', (e) => {
+      // The name dialog owns the keyboard while it is open.
+      if (this.isNameDialogOpen()) return;
+
       if (e.code === 'Space') {
         e.preventDefault();
         this.handleInput();
       }
       // Escape to return to menu
       if (e.code === 'Escape') {
-        if (this.state.current() === STATES.PLAYING || this.state.current() === STATES.GAME_OVER) {
+        if (this.state.current() !== STATES.MENU) {
+          this.state.returnToMenu();
+        }
+      }
+
+      // H opens the highscore lists from the menu or the game over screen
+      if (e.key === 'h' || e.key === 'H') {
+        if (this.state.current() === STATES.MENU || this.state.current() === STATES.GAME_OVER) {
+          this.openHighscores();
+        } else if (this.state.current() === STATES.HIGHSCORES) {
           this.state.returnToMenu();
         }
       }
@@ -182,18 +327,8 @@ class Game {
         }
       }
 
-      // Compact layout dimensions (must match renderMenu)
-      const compact = this.isMobile ? 0.85 : 1;
-      const baseY = this.isMobile ? 30 : 80;
-      const cardY = baseY + 50;
-      const cardHeight = Math.round(200 * compact);
-      const cols = 6;
-      const cellWidth = Math.round(65 * compact);
-      const cellHeight = Math.round(55 * compact);
-      const gap = Math.round(8 * compact);
-      const gridWidth = cols * cellWidth + (cols - 1) * gap;
-      const gridStartX = centerX - gridWidth / 2;
-      const gridStartY = cardY + Math.round(45 * compact);
+      const layout = this.getMenuLayout();
+      const { compact, cols, cellWidth, cellHeight, gap, gridStartX, gridStartY } = layout;
 
       for (let i = 0; i < 11; i++) {
         const table = i + 2;
@@ -209,26 +344,44 @@ class Game {
       }
 
       // Speed arrows
-      const speedCardY = cardY + cardHeight + Math.round(15 * compact);
-      const speedCardHeight = Math.round(70 * compact);
+      const { speedCardY } = layout;
       if (y >= speedCardY + Math.round(35 * compact) && y <= speedCardY + Math.round(65 * compact)) {
         if (x >= centerX - 80 && x <= centerX - 40) {
-          this.selectedSpeed = Math.max(this.selectedSpeed - 1, 1);
+          this.selectedSpeed = Math.max(this.selectedSpeed - 1, MIN_SPEED);
           return;
         }
         if (x >= centerX + 40 && x <= centerX + 80) {
-          this.selectedSpeed = Math.min(this.selectedSpeed + 1, 99);
+          this.selectedSpeed = Math.min(this.selectedSpeed + 1, MAX_SPEED);
           return;
         }
       }
 
-      // Check if clicking start button
-      const btnX = centerX - 110;
-      const btnY = speedCardY + speedCardHeight + Math.round(12 * compact);
-      const btnHeight = Math.round(50 * compact);
-      if (x >= btnX && x <= btnX + 220 && y >= btnY && y <= btnY + btnHeight) {
-        this.startGame();
+      // Start / highscores buttons
+      const { btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX } = layout;
+      if (y >= btnY && y <= btnY + btnHeight) {
+        if (x >= startBtnX && x <= startBtnX + btnWidth) {
+          this.startGame();
+          return;
+        }
+        if (x >= highscoreBtnX && x <= highscoreBtnX + btnWidth) {
+          this.openHighscores();
+          return;
+        }
       }
+
+      // Bird skin picker
+      const { skinSize, skinGap, skinStartX, skinY } = layout;
+      if (y >= skinY && y <= skinY + skinSize) {
+        for (let i = 0; i < SKINS.length; i++) {
+          const skinX = skinStartX + i * (skinSize + skinGap);
+          if (x >= skinX && x <= skinX + skinSize) {
+            this.selectSkin(SKINS[i].id);
+            return;
+          }
+        }
+      }
+    } else if (this.state.current() === STATES.HIGHSCORES) {
+      this.handleHighscoreClick(x, y);
     } else if (this.state.current() === STATES.PLAYING) {
       this.bird.flap();
       this.sound.play('flap');
@@ -238,8 +391,23 @@ class Game {
         this.currentProblem.spoken = true;
       }
     } else if (this.state.current() === STATES.GAME_OVER) {
+      const buttons = this.getGameOverButtons();
+
+      if (this.hitsRect(x, y, buttons.highscores)) {
+        this.openHighscores();
+        return;
+      }
+      if (buttons.name && this.hitsRect(x, y, buttons.name)) {
+        this.openNameDialog();
+        return;
+      }
+
       this.state.returnToMenu();
     }
+  }
+
+  hitsRect(x, y, rect) {
+    return rect && x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
   }
 
   handleInput() {
@@ -248,6 +416,8 @@ class Game {
 
     if (currentState === STATES.MENU) {
       this.startGame();
+    } else if (currentState === STATES.HIGHSCORES) {
+      this.state.returnToMenu();
     } else if (currentState === STATES.PLAYING) {
       this.bird.flap();
       this.sound.play('flap');
@@ -520,8 +690,217 @@ class Game {
     this.state.endGame();
     this.isFadingOut = false;
     this.fadeOut = 0;
-    if (!this.showMasteryMessage) {
+
+    this.recordRun();
+
+    if (this.showMasteryMessage) {
+      // The mastery fanfare already played when the streak was completed.
+    } else if (this.lastResult && this.lastResult.isPersonalBest) {
+      this.sound.play('mastery');
+    } else {
       this.sound.play('gameover');
+    }
+  }
+
+  // Stores the finished run locally, hands out the reward for a new personal
+  // best, and offers the run to the global list.
+  recordRun() {
+    const run = {
+      score: this.scoring.score,
+      table: this.selectedTable,
+      speed: this.selectedSpeed,
+      streak: this.scoring.bestStreak,
+      name: this.player.getName()
+    };
+
+    this.lastResult = { ...this.highscores.add(run), score: run.score };
+    this.saveHighscores();
+
+    this.unlockedSkin = null;
+    if (this.lastResult.isPersonalBest) {
+      const unlocked = this.skins.unlockNext();
+      if (unlocked) {
+        this.skins.select(unlocked.id);
+        this.bird.setColors(this.skins.getSelected().colors);
+        this.saveSkins();
+        this.unlockedSkin = unlocked;
+      }
+    }
+
+    this.submitToGlobal(run);
+  }
+
+  submitToGlobal(run) {
+    this.globalSubmission = null;
+    this.pendingSubmission = null;
+
+    if (run.score <= 0 || !this.globalScores.isAvailable()) return;
+
+    if (!this.player.hasName()) {
+      // Remember the run so it can still be sent if a name is entered now.
+      this.pendingSubmission = run;
+      this.globalSubmission = { status: 'no-name' };
+      return;
+    }
+
+    this.globalSubmission = { status: 'pending' };
+    this.globalScores.submit({ ...run, name: this.player.getName() }).then(result => {
+      this.globalSubmission = result.ok
+        ? { status: 'ok', rank: result.rank }
+        : { status: 'error', error: result.error };
+    });
+  }
+
+  openHighscores() {
+    this.state.showHighscores();
+    if (this.highscoreTab === 'global') this.refreshGlobal();
+  }
+
+  setHighscoreTab(tab) {
+    if (this.highscoreTab === tab) return;
+
+    this.highscoreTab = tab;
+    if (tab === 'global') this.refreshGlobal();
+  }
+
+  refreshGlobal() {
+    if (!this.globalScores.isAvailable()) {
+      this.globalList = { status: 'error', entries: [], error: 'unavailable' };
+      return;
+    }
+
+    const requestId = ++this.globalRequestId;
+    this.globalList = { status: 'loading', entries: [], error: null };
+
+    const table = this.highscoreShowAllTables ? null : this.selectedTable;
+    this.globalScores.fetchTop({ table, limit: 10 }).then(result => {
+      // Ignore a response that a newer request has already superseded.
+      if (requestId !== this.globalRequestId) return;
+
+      this.globalList = result.ok
+        ? { status: 'ok', entries: result.entries, error: null }
+        : { status: 'error', entries: [], error: result.error };
+    });
+  }
+
+  handleHighscoreClick(x, y) {
+    const layout = this.getHighscoreLayout();
+
+    if (y >= layout.tabY && y <= layout.tabY + layout.tabHeight) {
+      if (x >= layout.localTabX && x <= layout.localTabX + layout.tabWidth) {
+        this.setHighscoreTab('local');
+        return;
+      }
+      if (x >= layout.globalTabX && x <= layout.globalTabX + layout.tabWidth) {
+        this.setHighscoreTab('global');
+        return;
+      }
+    }
+
+    if (y >= layout.filterY && y <= layout.filterY + layout.filterHeight &&
+        x >= layout.filterX && x <= layout.filterX + layout.filterWidth) {
+      this.highscoreShowAllTables = !this.highscoreShowAllTables;
+      if (this.highscoreTab === 'global') this.refreshGlobal();
+      return;
+    }
+
+    if (y >= layout.footerY && y <= layout.footerY + layout.footerHeight) {
+      if (x >= layout.backBtnX && x <= layout.backBtnX + layout.backBtnWidth) {
+        this.state.returnToMenu();
+        return;
+      }
+      if (x >= layout.nameBtnX && x <= layout.nameBtnX + layout.nameBtnWidth) {
+        this.openNameDialog();
+      }
+    }
+  }
+
+  selectSkin(id) {
+    if (!this.skins.select(id)) return;
+
+    this.bird.setColors(this.skins.getSelected().colors);
+    this.saveSkins();
+    this.sound.play('flap');
+  }
+
+  getGameOverButtons() {
+    const centerX = this.canvasWidth / 2;
+    const y = 500;
+    const height = 42;
+    const gap = 10;
+    const needsName = Boolean(this.globalSubmission && this.globalSubmission.status === 'no-name');
+
+    const widths = needsName ? [150, 200, 170] : [200, 170];
+    const total = widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1);
+
+    let x = centerX - total / 2;
+    const buttons = {};
+
+    if (needsName) {
+      buttons.name = { x, y, width: 150, height };
+      x += 150 + gap;
+    }
+    buttons.continue = { x, y, width: 200, height };
+    x += 200 + gap;
+    buttons.highscores = { x, y, width: 170, height };
+
+    return buttons;
+  }
+
+  setupNameDialog() {
+    this.nameDialog = document.getElementById('name-dialog');
+    this.nameInput = document.getElementById('name-input');
+    this.nameSaveBtn = document.getElementById('name-save');
+    this.nameCancelBtn = document.getElementById('name-cancel');
+    this.pendingSubmission = null;
+
+    if (!this.nameDialog) return;
+
+    this.nameSaveBtn.addEventListener('click', () => this.saveNameFromDialog());
+    this.nameCancelBtn.addEventListener('click', () => this.closeNameDialog());
+    this.nameInput.addEventListener('keydown', (e) => {
+      // Keep typing out of the game controls.
+      e.stopPropagation();
+      if (e.key === 'Enter') this.saveNameFromDialog();
+      if (e.key === 'Escape') this.closeNameDialog();
+    });
+  }
+
+  isNameDialogOpen() {
+    return Boolean(this.nameDialog) && !this.nameDialog.classList.contains('hidden');
+  }
+
+  openNameDialog() {
+    if (!this.nameDialog) return;
+
+    document.getElementById('name-dialog-title').textContent = t('nameTitle');
+    document.getElementById('name-dialog-hint').textContent = t('nameHint');
+    this.nameSaveBtn.textContent = t('save');
+    this.nameCancelBtn.textContent = t('cancel');
+
+    this.nameInput.value = this.player.getName();
+    this.nameDialog.classList.remove('hidden');
+    this.nameInput.focus();
+    this.nameInput.select();
+  }
+
+  closeNameDialog() {
+    if (this.nameDialog) this.nameDialog.classList.add('hidden');
+  }
+
+  saveNameFromDialog() {
+    // An empty name is rejected; leave the dialog open so it can be corrected.
+    if (!this.player.setName(this.nameInput.value)) return;
+
+    this.closeNameDialog();
+
+    // A run that finished before a name existed can now join the global list.
+    if (this.pendingSubmission) {
+      this.submitToGlobal(this.pendingSubmission);
+    }
+
+    if (this.state.current() === STATES.HIGHSCORES && this.highscoreTab === 'global') {
+      this.refreshGlobal();
     }
   }
 
@@ -543,6 +922,8 @@ class Game {
       }
     } else if (currentState === STATES.GAME_OVER) {
       this.renderGameOver();
+    } else if (currentState === STATES.HIGHSCORES) {
+      this.renderHighscores();
     }
 
     // FPS counter (top-right, always visible)
@@ -601,9 +982,9 @@ class Game {
       }
     });
 
-    // Scale factor for compact mobile layout
-    const compact = this.isMobile ? 0.85 : 1;
-    const baseY = this.isMobile ? 30 : 80;
+    // Shared layout (also used for hit testing in handleClick)
+    const layout = this.getMenuLayout();
+    const { compact, baseY } = layout;
 
     // Title with shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
@@ -620,10 +1001,7 @@ class Game {
     ctx.fillText(t('subtitle'), centerX, baseY + 30);
 
     // Table selection card
-    const cardX = centerX - 250;
-    const cardY = baseY + 50;
-    const cardWidth = 500;
-    const cardHeight = Math.round(200 * compact);
+    const { cardX, cardY, cardWidth, cardHeight } = layout;
 
     // Card shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
@@ -641,13 +1019,7 @@ class Game {
     ctx.fillText(t('selectTable'), centerX, cardY + 30);
 
     // Table selection grid - centered
-    const cols = 6;
-    const cellWidth = Math.round(65 * compact);
-    const cellHeight = Math.round(55 * compact);
-    const gap = Math.round(8 * compact);
-    const gridWidth = cols * cellWidth + (cols - 1) * gap;
-    const gridStartX = centerX - gridWidth / 2;
-    const gridStartY = cardY + Math.round(45 * compact);
+    const { cols, cellWidth, cellHeight, gap, gridStartX, gridStartY } = layout;
 
     for (let i = 0; i < 11; i++) {
       const table = i + 2;
@@ -692,17 +1064,22 @@ class Game {
       ctx.font = 'bold 22px system-ui';
       ctx.fillText(`${table}×`, cellX + cellWidth / 2, cellY + (bestSpeed > 0 ? 25 : 32));
 
-      // Best speed badge
-      if (bestSpeed > 0) {
-        ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.8)' : '#666';
-        ctx.font = '11px system-ui';
-        ctx.fillText(`${t('best')}: ${bestSpeed}`, cellX + cellWidth / 2, cellY + 45);
+      // Best speed and personal best score badges
+      const personalBest = this.highscores.getBestScore(table);
+      if (bestSpeed > 0 || personalBest > 0) {
+        ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.85)' : '#666';
+        ctx.font = `${Math.round(11 * compact)}px system-ui`;
+
+        const badges = [];
+        if (bestSpeed > 0) badges.push(`${t('best')}: ${bestSpeed}`);
+        if (personalBest > 0) badges.push(`★${personalBest}`);
+
+        ctx.fillText(badges.join('  '), cellX + cellWidth / 2, cellY + Math.round(45 * compact));
       }
     }
 
     // Speed selector card
-    const speedCardY = cardY + cardHeight + Math.round(15 * compact);
-    const speedCardHeight = Math.round(70 * compact);
+    const { speedCardY, speedCardHeight } = layout;
 
     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     this.roundRect(ctx, cardX, speedCardY, cardWidth, speedCardHeight, 15);
@@ -723,38 +1100,265 @@ class Game {
     ctx.fillStyle = '#4CAF50';
     ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + Math.round(50 * compact));
 
-    // Start button
-    const btnY = speedCardY + speedCardHeight + Math.round(12 * compact);
-    const btnX = centerX - 110;
-    const btnWidth = 220;
-    const btnHeight = Math.round(50 * compact);
+    // Start and highscores buttons, side by side
+    const { btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX } = layout;
 
-    // Button shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    this.roundRect(ctx, btnX + 3, btnY + 3, btnWidth, btnHeight, 12);
-    ctx.fill();
+    this.renderButton(
+      startBtnX, btnY, btnWidth, btnHeight,
+      t('startGame'), Math.round(26 * compact),
+      ['#66BB6A', '#43A047']
+    );
+    this.renderButton(
+      highscoreBtnX, btnY, btnWidth, btnHeight,
+      `🏆 ${t('highscores')}`, Math.round(19 * compact),
+      ['#5C6BC0', '#3949AB']
+    );
 
-    // Button gradient
-    const btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnHeight);
-    btnGradient.addColorStop(0, '#66BB6A');
-    btnGradient.addColorStop(1, '#43A047');
-    ctx.fillStyle = btnGradient;
-    this.roundRect(ctx, btnX, btnY, btnWidth, btnHeight, 12);
-    ctx.fill();
-
-    // Button text
-    ctx.fillStyle = '#FFF';
-    ctx.font = `bold ${Math.round(26 * compact)}px system-ui`;
-    ctx.fillText(t('startGame'), centerX, btnY + Math.round(32 * compact));
+    // Bird skins - unlocked by beating your own local highscores
+    this.renderSkinPicker(layout);
 
     // Instructions - different for mobile vs desktop
+    const hintY = layout.skinY + layout.skinSize + Math.round(36 * compact);
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#999';
-    ctx.font = `${Math.round(14 * compact)}px system-ui`;
+    ctx.font = `${Math.round(13 * compact)}px system-ui`;
     if (this.isMobile) {
-      ctx.fillText('Tap to start', centerX, btnY + btnHeight + Math.round(20 * compact));
+      ctx.fillText('Tap to start', centerX, hintY);
     } else {
-      ctx.fillText('Press SPACE or click to start  •  Arrow keys to adjust', centerX, btnY + btnHeight + 25);
+      ctx.fillText('SPACE to start  •  Arrows to adjust  •  H for highscores', centerX, hintY);
     }
+  }
+
+  // Rounded gradient button with a shadow and centered label.
+  renderButton(x, y, width, height, label, fontSize, [from, to], options = {}) {
+    const ctx = this.ctx;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    this.roundRect(ctx, x + 3, y + 3, width, height, 12);
+    ctx.fill();
+
+    const gradient = ctx.createLinearGradient(x, y, x, y + height);
+    gradient.addColorStop(0, from);
+    gradient.addColorStop(1, to);
+    ctx.fillStyle = gradient;
+    this.roundRect(ctx, x, y, width, height, 12);
+    ctx.fill();
+
+    if (options.border) {
+      ctx.strokeStyle = options.border;
+      ctx.lineWidth = 2;
+      this.roundRect(ctx, x, y, width, height, 12);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = options.color || '#FFF';
+    ctx.font = `bold ${fontSize}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + width / 2, y + height / 2 + fontSize * 0.36);
+  }
+
+  renderSkinPicker(layout) {
+    const ctx = this.ctx;
+    const { skinSize, skinGap, skinStartX, skinY, compact, centerX } = layout;
+    const selectedId = this.skins.getSelectedId();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#777';
+    ctx.font = `bold ${Math.round(12 * compact)}px system-ui`;
+    ctx.fillText(t('birds'), centerX, skinY - Math.round(6 * compact));
+
+    this.skins.getAll().forEach((skin, i) => {
+      const x = skinStartX + i * (skinSize + skinGap);
+      const isSelected = skin.id === selectedId;
+
+      ctx.fillStyle = skin.unlocked ? 'rgba(255, 255, 255, 0.9)' : 'rgba(220, 220, 220, 0.75)';
+      this.roundRect(ctx, x, skinY, skinSize, skinSize, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = isSelected ? '#4CAF50' : '#DDD';
+      ctx.lineWidth = isSelected ? 3 : 1;
+      this.roundRect(ctx, x, skinY, skinSize, skinSize, 8);
+      ctx.stroke();
+
+      if (skin.unlocked) {
+        ctx.save();
+        ctx.translate(x + skinSize / 2 - 1, skinY + skinSize / 2);
+        drawBirdShape(ctx, skinSize * 0.62, skin.colors);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#AAA';
+        ctx.font = `${Math.round(15 * compact)}px system-ui`;
+        ctx.fillText('🔒', x + skinSize / 2, skinY + skinSize / 2 + 6);
+      }
+    });
+
+    if (this.skins.hasLockedSkins()) {
+      ctx.fillStyle = '#AAA';
+      ctx.font = `${Math.round(11 * compact)}px system-ui`;
+      ctx.fillText(t('lockedBird'), centerX, skinY + skinSize + Math.round(12 * compact));
+    }
+  }
+
+  // The highscore screen: a local list to beat your own runs, and a global one
+  // to compare with friends.
+  renderHighscores() {
+    const ctx = this.ctx;
+    const layout = this.getHighscoreLayout();
+    const { centerX, compact, panelX, panelY, panelWidth, panelHeight } = layout;
+
+    // Dim the sky behind the panel
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+
+    // Panel
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+    this.roundRect(ctx, panelX, panelY, panelWidth, panelHeight, 18);
+    ctx.fill();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#2D5A1F';
+    ctx.font = `bold ${Math.round(30 * compact)}px system-ui`;
+    ctx.fillText(`🏆 ${t('highscores')}`, centerX, panelY + Math.round(38 * compact));
+
+    // Tabs
+    const isLocal = this.highscoreTab === 'local';
+    this.renderTab(layout.localTabX, layout.tabY, layout.tabWidth, layout.tabHeight, t('localTab'), isLocal, compact);
+    this.renderTab(layout.globalTabX, layout.tabY, layout.tabWidth, layout.tabHeight, t('globalTab'), !isLocal, compact);
+
+    // Table filter toggle
+    const filterLabel = this.highscoreShowAllTables ? t('allTables') : `${this.selectedTable}× ${t('tableAt')}`;
+    ctx.fillStyle = '#EEF1F8';
+    this.roundRect(ctx, layout.filterX, layout.filterY, layout.filterWidth, layout.filterHeight, 13);
+    ctx.fill();
+    ctx.strokeStyle = '#C8CFE0';
+    ctx.lineWidth = 1;
+    this.roundRect(ctx, layout.filterX, layout.filterY, layout.filterWidth, layout.filterHeight, 13);
+    ctx.stroke();
+    ctx.fillStyle = '#42507A';
+    ctx.font = `${Math.round(12 * compact)}px system-ui`;
+    ctx.fillText(`⇄ ${filterLabel}`, centerX, layout.filterY + layout.filterHeight / 2 + 4);
+
+    if (isLocal) {
+      this.renderLocalScores(layout);
+    } else {
+      this.renderGlobalScores(layout);
+    }
+
+    // Footer: name button (global identity) and back
+    const nameLabel = this.player.hasName() ? `👤 ${this.player.getName()}` : t('setName');
+    this.renderButton(
+      layout.nameBtnX, layout.footerY, layout.nameBtnWidth, layout.footerHeight,
+      nameLabel, Math.round(14 * compact), ['#ECEFF6', '#DCE1EE'],
+      { color: '#42507A' }
+    );
+    this.renderButton(
+      layout.backBtnX, layout.footerY, layout.backBtnWidth, layout.footerHeight,
+      t('back'), Math.round(16 * compact), ['#66BB6A', '#43A047']
+    );
+  }
+
+  renderTab(x, y, width, height, label, isActive, compact) {
+    const ctx = this.ctx;
+
+    ctx.fillStyle = isActive ? '#3949AB' : '#E8EAF2';
+    this.roundRect(ctx, x, y, width, height, 10);
+    ctx.fill();
+
+    ctx.fillStyle = isActive ? '#FFF' : '#666';
+    ctx.font = `bold ${Math.round(15 * compact)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x + width / 2, y + height / 2 + 5);
+  }
+
+  renderLocalScores(layout) {
+    const table = this.highscoreShowAllTables ? null : this.selectedTable;
+    const entries = table === null
+      ? this.highscores.getTop(layout.maxRows)
+      : this.highscores.getForTable(table, layout.maxRows);
+
+    if (entries.length === 0) {
+      this.renderScoreMessage(layout, t('noScoresYet'));
+      return;
+    }
+
+    this.renderScoreRows(layout, entries, { highlightAll: true });
+  }
+
+  renderGlobalScores(layout) {
+    const { status, entries, error } = this.globalList;
+
+    if (status === 'loading') {
+      this.renderScoreMessage(layout, t('loadingScores'));
+      return;
+    }
+
+    if (status === 'error') {
+      const message = error === 'unavailable' ? t('globalUnavailable') : t('globalOffline');
+      this.renderScoreMessage(layout, message);
+      return;
+    }
+
+    if (entries.length === 0) {
+      this.renderScoreMessage(layout, t('noScoresYet'));
+      return;
+    }
+
+    const myName = this.player.getName().toLowerCase();
+    this.renderScoreRows(layout, entries.slice(0, layout.maxRows), {
+      isMine: entry => Boolean(myName) && entry.name.toLowerCase() === myName
+    });
+  }
+
+  renderScoreMessage(layout, message) {
+    const ctx = this.ctx;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#9AA3B8';
+    ctx.font = `${Math.round(15 * layout.compact)}px system-ui`;
+    ctx.fillText(message, layout.centerX, layout.rowsY + Math.round(40 * layout.compact));
+  }
+
+  renderScoreRows(layout, entries, { highlightAll = false, isMine = () => false } = {}) {
+    const ctx = this.ctx;
+    const { panelX, panelWidth, rowsY, rowHeight, compact } = layout;
+    const rowX = panelX + 18;
+    const rowWidth = panelWidth - 36;
+    const medals = ['#FFD700', '#C0C0C0', '#CD7F32'];
+
+    entries.forEach((entry, i) => {
+      const y = rowsY + i * rowHeight;
+      const mine = highlightAll || isMine(entry);
+
+      if (mine) {
+        ctx.fillStyle = 'rgba(76, 175, 80, 0.12)';
+        this.roundRect(ctx, rowX, y, rowWidth, rowHeight - 4, 8);
+        ctx.fill();
+      }
+
+      // Rank (medal colour for the top three)
+      ctx.textAlign = 'left';
+      ctx.fillStyle = medals[i] || '#98A2B8';
+      ctx.font = `bold ${Math.round(14 * compact)}px system-ui`;
+      ctx.fillText(`${i + 1}`, rowX + 10, y + rowHeight / 2 + 4);
+
+      // Name
+      ctx.fillStyle = '#333';
+      ctx.font = `${Math.round(14 * compact)}px system-ui`;
+      ctx.fillText(entry.name || t('you'), rowX + 36, y + rowHeight / 2 + 4);
+
+      // Table and speed
+      ctx.fillStyle = '#98A2B8';
+      ctx.font = `${Math.round(12 * compact)}px system-ui`;
+      ctx.fillText(`${entry.table}×  ·  ${t('speed')} ${entry.speed}`, rowX + rowWidth * 0.48, y + rowHeight / 2 + 4);
+
+      // Score
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#2E7D32';
+      ctx.font = `bold ${Math.round(16 * compact)}px system-ui`;
+      ctx.fillText(`${entry.score}`, rowX + rowWidth - 12, y + rowHeight / 2 + 5);
+    });
+
+    ctx.textAlign = 'center';
   }
 
   roundRect(ctx, x, y, width, height, radius) {
@@ -997,37 +1601,107 @@ class Game {
       ctx.font = 'bold 32px system-ui';
       ctx.fillStyle = '#2196F3';
       ctx.fillText(`${this.scoring.bestStreak} / 10`, centerX, cardY + 270);
+
+      // Personal best line: what there was to beat, or what stands now
+      const best = this.highscores.getBestScore(this.selectedTable);
+      if (this.lastResult && this.lastResult.isPersonalBest) {
+        ctx.fillStyle = '#B8860B';
+        ctx.font = '14px system-ui';
+        ctx.fillText(`${t('previousBest')}: ${this.lastResult.previousBest}`, centerX, cardY + 294);
+      } else if (best > 0) {
+        ctx.fillStyle = '#888';
+        ctx.font = '14px system-ui';
+        ctx.fillText(`${t('yourBest')}: ${best} (${this.selectedTable}×)`, centerX, cardY + 294);
+      }
+
+      // New record ribbon across the top of the card
+      if (this.lastResult && this.lastResult.isPersonalBest) {
+        const ribbonWidth = 260;
+        const ribbonX = centerX - ribbonWidth / 2;
+        const ribbonY = cardY - 22;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        this.roundRect(ctx, ribbonX + 3, ribbonY + 3, ribbonWidth, 40, 20);
+        ctx.fill();
+
+        const ribbon = ctx.createLinearGradient(ribbonX, ribbonY, ribbonX, ribbonY + 40);
+        ribbon.addColorStop(0, '#FFE082');
+        ribbon.addColorStop(1, '#FFB300');
+        ctx.fillStyle = ribbon;
+        this.roundRect(ctx, ribbonX, ribbonY, ribbonWidth, 40, 20);
+        ctx.fill();
+
+        ctx.fillStyle = '#7A4F00';
+        ctx.font = 'bold 22px system-ui';
+        ctx.fillText(`⭐ ${t('newRecord')}`, centerX, ribbonY + 28);
+      }
     }
 
-    // Continue button
-    const btnY = 485;
-    const btnHeight = 44;
+    this.renderRewardStrip(centerX);
 
-    // Measure text to fit button width
-    ctx.font = '16px system-ui';
-    const continueText = t('pressToContinue');
-    const textWidth = ctx.measureText(continueText).width;
-    const btnWidth = Math.max(200, textWidth + 50);
-    const btnX = centerX - btnWidth / 2;
+    // Footer buttons: continue, highscores, and (when needed) set a name
+    const buttons = this.getGameOverButtons();
 
-    // Button background with subtle gradient
-    const btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnHeight);
-    btnGradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-    btnGradient.addColorStop(1, 'rgba(255, 255, 255, 0.15)');
-    ctx.fillStyle = btnGradient;
-    this.roundRect(ctx, btnX, btnY, btnWidth, btnHeight, 22);
-    ctx.fill();
+    if (buttons.name) {
+      this.renderButton(
+        buttons.name.x, buttons.name.y, buttons.name.width, buttons.name.height,
+        t('setName'), 15, ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.18)'],
+        { border: 'rgba(255, 255, 255, 0.45)' }
+      );
+    }
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 1.5;
-    this.roundRect(ctx, btnX, btnY, btnWidth, btnHeight, 22);
-    ctx.stroke();
+    this.renderButton(
+      buttons.continue.x, buttons.continue.y, buttons.continue.width, buttons.continue.height,
+      t('pressToContinue'), 15, ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.18)'],
+      { border: 'rgba(255, 255, 255, 0.45)' }
+    );
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.font = '16px system-ui';
-    ctx.fillText(continueText, centerX, btnY + 28);
+    this.renderButton(
+      buttons.highscores.x, buttons.highscores.y, buttons.highscores.width, buttons.highscores.height,
+      `🏆 ${t('highscores')}`, 15, ['#5C6BC0', '#3949AB']
+    );
+  }
+
+  // Reward and global-rank feedback shown between the card and the buttons.
+  renderRewardStrip(centerX) {
+    const ctx = this.ctx;
+    ctx.textAlign = 'center';
+
+    if (this.unlockedSkin) {
+      const label = `${t('skinUnlocked')}  ${this.unlockedSkin.name}`;
+
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 17px system-ui';
+      ctx.fillText(label, centerX + 16, 458);
+
+      const textWidth = ctx.measureText(label).width;
+      ctx.save();
+      ctx.translate(centerX + 16 - textWidth / 2 - 26, 451);
+      drawBirdShape(ctx, 26, this.unlockedSkin.colors);
+      ctx.restore();
+    }
+
+    const submission = this.globalSubmission;
+    if (!submission) return;
+
+    ctx.font = '14px system-ui';
+
+    if (submission.status === 'pending') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.fillText(t('sendingScore'), centerX, 482);
+    } else if (submission.status === 'ok' && submission.rank) {
+      ctx.fillStyle = '#90CAF9';
+      ctx.fillText(`🌍 ${t('globalRank')}: #${submission.rank}`, centerX, 482);
+    } else if (submission.status === 'no-name') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.fillText(t('nameNeeded'), centerX, 482);
+    } else if (submission.status === 'error') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.fillText(t('globalOffline'), centerX, 482);
+    }
   }
 }
 
-// Start game when DOM is ready
-new Game();
+// Start game when DOM is ready. The instance is exposed for debugging from the
+// browser console (window.game).
+window.game = new Game();

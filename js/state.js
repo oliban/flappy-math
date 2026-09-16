@@ -1,7 +1,8 @@
 export const STATES = {
   MENU: 'menu',
   PLAYING: 'playing',
-  GAME_OVER: 'gameOver'
+  GAME_OVER: 'gameOver',
+  HIGHSCORES: 'highscores'
 };
 
 export function createGameState() {
@@ -24,8 +25,14 @@ export function createGameState() {
       }
     },
 
+    showHighscores() {
+      if (currentState === STATES.MENU || currentState === STATES.GAME_OVER) {
+        currentState = STATES.HIGHSCORES;
+      }
+    },
+
     returnToMenu() {
-      if (currentState === STATES.GAME_OVER || currentState === STATES.PLAYING) {
+      if (currentState !== STATES.MENU) {
         currentState = STATES.MENU;
       }
     }

@@ -4,6 +4,7 @@
   "description": "Flappy Bird-style game for practicing multiplication tables",
   "type": "module",
   "scripts": {
+    "start": "node server/server.js",
     "test": "vitest"
   },
   "devDependencies": {
