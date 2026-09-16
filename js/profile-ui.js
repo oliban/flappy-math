@@ -9,6 +9,7 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
   const nameInput = document.getElementById('profile-name');
   const grid = document.getElementById('avatar-grid');
   const backBtn = document.getElementById('profile-back');
+  const selectedName = document.getElementById('avatar-selected-name');
   const submitBtn = document.getElementById('profile-submit');
 
   let selectedAvatar = profile.getAvatarId();
@@ -33,9 +34,13 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
       pctx.translate(size / 2, size / 2 + 2);
       drawAvatar(pctx, avatar.id, 24, 0.6);
       const label = document.createElement('span');
+      label.className = 'avatar-label';
       const key = `avatar_${avatar.id}`;
       const translated = t(key);
-      label.textContent = translated === key ? avatar.name : translated;
+      const displayName = translated === key ? avatar.name : translated;
+      label.textContent = displayName;
+      btn.title = displayName;
+      avatar.displayName = displayName;
       btn.appendChild(preview);
       btn.appendChild(label);
       btn.addEventListener('click', () => {
@@ -43,9 +48,15 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
         for (const el of grid.children) {
           el.setAttribute('aria-checked', String(el.dataset.id === selectedAvatar));
         }
+        updateSelectedName();
       });
       grid.appendChild(btn);
     }
+  }
+
+  function updateSelectedName() {
+    const current = [...grid.children].find(el => el.dataset.id === selectedAvatar);
+    selectedName.textContent = current ? current.title : '';
   }
 
   function applyTranslations() {
@@ -85,6 +96,7 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
     selectedAvatar = profile.getAvatarId();
     applyTranslations();
     renderAvatars();
+    updateSelectedName();
     nameInput.value = profile.getName();
     backBtn.hidden = !allowBack;
     updateSubmit();

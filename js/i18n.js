@@ -28,7 +28,7 @@ const translations = {
     whoIsPlaying: 'Who is playing?',
     yourName: 'Your name',
     namePlaceholder: 'Type your name',
-    pickAvatar: 'Pick your animal',
+    pickAvatar: 'Choose your character',
     letsGo: "Let's go!",
 
     // Gallery / unlocks
@@ -112,7 +112,7 @@ const translations = {
     whoIsPlaying: 'Vem spelar?',
     yourName: 'Ditt namn',
     namePlaceholder: 'Skriv ditt namn',
-    pickAvatar: 'Välj ditt djur',
+    pickAvatar: 'Välj din figur',
     letsGo: 'Kör!',
 
     // Gallery / unlocks
