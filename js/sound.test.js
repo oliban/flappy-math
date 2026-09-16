@@ -1,102 +1,111 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { createSoundPlayer } from './sound.js';
 
-describe('Sound Player', () => {
-  let mockAudios;
-  let MockAudioClass;
+// --- Web Audio mocks ---------------------------------------------------------
+function mockWebAudio() {
+  const started = [];
+  const decoded = [];
+  const ctx = {
+    state: 'suspended',
+    currentTime: 0,
+    destination: {},
+    resume: vi.fn(() => { ctx.state = 'running'; return Promise.resolve(); }),
+    decodeAudioData: vi.fn((buf) => { decoded.push(buf.name); return Promise.resolve({ duration: 0.5, name: buf.name }); }),
+    createBufferSource: vi.fn(() => {
+      const src = { buffer: null, connect: vi.fn(), start: vi.fn((when) => started.push({ name: src.buffer && src.buffer.name, when })), onended: null };
+      return src;
+    })
+  };
+  const fetched = [];
+  const fetchFn = vi.fn((url) => { fetched.push(url); return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve({ name: url }) }); });
+  return { ctx, fetchFn, started, decoded, fetched, factory: () => ctx };
+}
 
-  beforeEach(() => {
-    mockAudios = [];
+function MockAudioClass() {
+  const instances = [];
+  const Cls = class {
+    constructor(src) { this.src = src; this.currentTime = 0; this.load = vi.fn(); this.play = vi.fn(() => Promise.resolve()); instances.push(this); }
+  };
+  return { Cls, instances };
+}
 
-    MockAudioClass = class {
-      constructor(src) {
-        this.src = src;
-        this.currentTime = 0;
-        this.load = vi.fn();
-        this.play = vi.fn(() => Promise.resolve());
-        mockAudios.push(this);
-      }
-    };
+const flush = () => new Promise(r => setTimeout(r, 0));
+
+describe('Sound Player (Web Audio)', () => {
+  let wa;
+  beforeEach(() => { wa = mockWebAudio(); });
+
+  test('unlock creates the context, resumes it and preloads all 7 sounds', async () => {
+    const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
+    player.unlock();
+    await flush(); await flush();
+    expect(wa.ctx.resume).toHaveBeenCalled();
+    expect(wa.fetched.length).toBe(7);
+    expect(wa.fetched.some(u => u.endsWith('crash.mp3'))).toBe(true);
+    expect(wa.decoded.length).toBe(7);
   });
 
-  test('preload creates audio elements for each sound', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.preload();
-
-    expect(mockAudios.length).toBe(7);
-    mockAudios.forEach(audio => {
-      expect(audio.load).toHaveBeenCalled();
-    });
+  test('unlock only runs once', async () => {
+    const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
+    player.unlock(); player.unlock();
+    await flush(); await flush();
+    expect(wa.fetched.length).toBe(7);
   });
 
-  test('play resets currentTime and plays the sound', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.preload();
-
-    const crashAudio = mockAudios.find(a => a.src.includes('crash.mp3'));
-    crashAudio.currentTime = 5;
-
-    player.play('crash');
-
-    expect(crashAudio.currentTime).toBe(0);
-    expect(crashAudio.play).toHaveBeenCalled();
+  test('play starts a decoded buffer from memory without fetching again', async () => {
+    const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
+    player.unlock();
+    await flush(); await flush();
+    const fetchesBefore = wa.fetched.length;
+    player.play('flap');
+    player.play('flap');
+    expect(wa.started.filter(s => s.name.endsWith('flap.mp3')).length).toBe(2);
+    expect(wa.fetched.length).toBe(fetchesBefore);
   });
 
-  test('play does nothing when muted', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.preload();
+  test('play before decoding finished does not throw', () => {
+    const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
+    player.unlock();
+    expect(() => player.play('crash')).not.toThrow();
+  });
+
+  test('play does nothing when muted or for unknown names', async () => {
+    const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
+    player.unlock();
+    await flush(); await flush();
     player.setMuted(true);
-
     player.play('crash');
-
-    const crashAudio = mockAudios.find(a => a.src.includes('crash.mp3'));
-    expect(crashAudio.play).not.toHaveBeenCalled();
-  });
-
-  test('play does nothing for unknown sound name', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.preload();
-
+    player.setMuted(false);
     player.play('nonexistent');
-
-    mockAudios.forEach(audio => {
-      expect(audio.play).not.toHaveBeenCalled();
-    });
-  });
-
-  test('unlock preloads sounds', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.unlock();
-
-    expect(mockAudios.length).toBe(7);
-  });
-
-  test('unlock only runs once', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.unlock();
-    player.unlock();
-
-    // Should only create audio elements once
-    expect(mockAudios.length).toBe(7);
+    expect(wa.started.length).toBe(0);
   });
 
   test('mute state can be toggled', () => {
-    const player = createSoundPlayer(MockAudioClass);
-
+    const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
     expect(player.isMuted()).toBe(false);
     player.setMuted(true);
     expect(player.isMuted()).toBe(true);
-    player.setMuted(false);
-    expect(player.isMuted()).toBe(false);
+  });
+});
+
+describe('Sound Player (fallback to audio elements)', () => {
+  test('uses Audio elements when Web Audio is unavailable', () => {
+    const { Cls, instances } = MockAudioClass();
+    const player = createSoundPlayer({ audioContextFactory: null, AudioClass: Cls });
+    player.unlock();
+    expect(instances.length).toBe(7);
+    const crash = instances.find(a => a.src.includes('crash.mp3'));
+    crash.currentTime = 5;
+    player.play('crash');
+    expect(crash.currentTime).toBe(0);
+    expect(crash.play).toHaveBeenCalled();
   });
 
-  test('can play thud sound', () => {
-    const player = createSoundPlayer(MockAudioClass);
-    player.preload();
-
+  test('falls back when the context factory throws', () => {
+    const { Cls, instances } = MockAudioClass();
+    const player = createSoundPlayer({ audioContextFactory: () => { throw new Error('no audio'); }, AudioClass: Cls });
+    player.unlock();
     player.play('thud');
-
-    const thudAudio = mockAudios.find(a => a.src.includes('thud'));
-    expect(thudAudio.play).toHaveBeenCalled();
+    expect(instances.find(a => a.src.includes('thud')).play).toHaveBeenCalled();
   });
 });

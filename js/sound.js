@@ -1,3 +1,5 @@
+import { createAudioEngine } from './audio-engine.js';
+
 const SOUNDS = {
   crash: 'sounds/crash.mp3',
   thud: 'sounds/thud.mp3',
@@ -8,46 +10,54 @@ const SOUNDS = {
   mastery: 'sounds/mastery.mp3'
 };
 
-export function createSoundPlayer(AudioClass = Audio) {
-  const sounds = new Map();
+export function createSoundPlayer({ audioContextFactory, fetchFn, AudioClass } = {}) {
+  const engine = createAudioEngine({ audioContextFactory, fetchFn });
+  const _Audio = AudioClass !== undefined ? AudioClass : (typeof Audio !== 'undefined' ? Audio : null);
+  const elements = new Map(); // fallback <audio> elements
   let unlocked = false;
   let muted = false;
 
   return {
     preload() {
-      for (const [name, path] of Object.entries(SOUNDS)) {
-        const audio = new AudioClass(path);
-        audio.load();
-        sounds.set(name, audio);
+      if (engine.isAvailable()) {
+        engine.loadAll(Object.values(SOUNDS), 4);
+      } else if (_Audio) {
+        for (const [name, path] of Object.entries(SOUNDS)) {
+          if (elements.has(name)) continue;
+          const audio = new _Audio(path);
+          audio.load();
+          elements.set(name, audio);
+        }
       }
     },
 
+    // Must be called from a user gesture the first time
     unlock() {
       if (unlocked) return;
-
-      this.preload();
-
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        ctx.resume().then(() => ctx.close());
-      } catch (e) {
-        // AudioContext not supported, Audio elements should still work
-      }
-
       unlocked = true;
+      engine.resume();
+      this.preload();
     },
 
     play(name) {
       if (muted) return;
+      const path = SOUNDS[name];
+      if (!path) return;
 
-      const audio = sounds.get(name);
+      if (engine.isAvailable()) {
+        const buffer = engine.get(path);
+        if (buffer) engine.play(buffer);
+        return;
+      }
+
+      const audio = elements.get(name);
       if (!audio) return;
-
       audio.currentTime = 0;
-      audio.play().catch(() => {
-        // Silently fail if autoplay blocked
-      });
+      audio.play().catch(() => {});
     },
+
+    // Expose the shared engine so other audio (character voices) can use the same context
+    engine,
 
     setMuted(value) {
       muted = value;

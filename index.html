@@ -7,19 +7,39 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="screen-orientation" content="landscape">
-  <meta name="theme-color" content="#1a1a2e">
+  <meta name="theme-color" content="#5DB7F5">
   <title>Flappy Math</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="game-container">
     <canvas id="game-canvas"></canvas>
+
+    <!-- Player profile overlay (HTML so the keyboard works on phones and tablets) -->
+    <div id="profile-overlay" class="overlay" hidden>
+      <form id="profile-form" class="profile-card" autocomplete="off">
+        <h1 id="profile-title">Who is playing?</h1>
+        <label class="field">
+          <span id="profile-name-label">Your name</span>
+          <input id="profile-name" type="text" maxlength="12" inputmode="text" autocapitalize="words" enterkeyhint="done" required>
+        </label>
+        <p id="profile-avatar-label" class="section-label">Pick your animal</p>
+        <div id="avatar-grid" class="avatar-grid" role="radiogroup"></div>
+        <div class="profile-actions">
+          <button type="button" id="profile-back" class="btn btn-ghost" hidden>Back</button>
+          <button type="submit" id="profile-submit" class="btn btn-primary">Let's go!</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <div id="portrait-warning">
     <div class="rotate-icon">📱</div>
-    <h2>Rotate Your Device</h2>
-    <p>Please rotate to landscape mode to play</p>
+    <h2 id="rotate-title">Rotate your device</h2>
+    <p id="rotate-body">Please turn to landscape to play</p>
   </div>
 
   <script type="module" src="js/game.js"></script>

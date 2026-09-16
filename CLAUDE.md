@@ -18,8 +18,20 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 **Core Loop:** Bird flies right, pipes have 3 answer gaps, player flies through correct answer.
 
 **Key Modules:**
-- `js/game.js` - Main loop, orchestrates updates and rendering
-- `js/state.js` - Game state machine (menu → playing → gameOver)
+- `js/game.js` - Main loop, orchestrates updates and rendering (all canvas screens)
+- `js/state.js` - Game state machine (menu / profile / highscores → playing → gameOver)
+- `js/run.js` - A play session: mode (weekly or practice), table, speed ramp
+- `js/pace.js` - Speed level → seconds for a pipe to cross the screen (resolution independent)
+- `js/weekly.js` - ISO week number → table 2-12 for the weekly challenge
+- `js/player.js` - Player name + avatar, persisted to LocalStorage
+- `js/avatars.js` - Vector-drawn characters (parametric roster), `drawAvatar(ctx, id, r, phase)`
+- `js/avatar-sprites.js` - Sprite-sheet cache so a character costs one drawImage per frame
+- `js/unlocks.js` - Character unlocks: weekly drop per device, daily bonus for a new #1 score
+- `js/router.js` - URL routes: `/#highscores`, `/#gallery` (secret)
+- `js/highscores.js` - Local top-10 list for weekly runs
+- `js/profile-ui.js` - HTML overlay for name entry and avatar picking
+- `js/ui.js` - Canvas UI helpers (palette, buttons, cards, hit areas)
+- `js/background.js` - Parallax sky, clouds, hills
 - `js/bird.js` - Bird physics (gravity, flap)
 - `js/pipe.js` - Pipes with 3 answer gaps
 - `js/math.js` - Problem generation (correct + plausible wrong answers)
@@ -28,11 +40,17 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/progress.js` - Mastery tracking per table/speed
 - `js/storage.js` - LocalStorage persistence
 
-**Progression System:**
-- Tables 2×-12×, all accessible from start
-- Integer speed levels (1, 2, 3...) per table
-- Mastery = 10 correct answers in a row at a speed
-- Best speed per table saved to LocalStorage
+**Modes:**
+- Weekly Challenge (default): table = ISO week number mapped onto 2-12, speed starts at 1 and rises one level every `HITS_PER_SPEED_LEVEL` correct answers, run ends when lives are gone, score goes to the local highscore list
+- Practice: player picks table 2×-12× and speed level; mastery = 10 correct in a row, best speed per table saved to LocalStorage
+
+**Pace:** never define motion in px/frame. The canvas is 600 units tall and as wide as the viewport aspect demands (a landscape phone is ~1800 wide), so px/frame speeds crawl on phones. Use `pace.js` (screen-relative) and the fixed 60 Hz step in `game.js`.
+
+**Performance:** mobile Safari is slow at gradients, strokes, text and emoji every frame. Background layers, pipe parts, avatars and HUD panels are pre-rendered to offscreen canvases and blitted. Open the game with `?fps` to see a frame counter on device.
+
+**Input:** `pointerdown` on the canvas (mouse + touch) flaps in-game and drives buttons elsewhere via hit areas registered during render. Space/Enter also flap or confirm.
+
+**Deployment:** static site served by nginx (`Dockerfile`, `nginx.conf`) on fly.io (`fly.toml`, app `flappy-math`). Deploy with `fly deploy` only when explicitly approved.
 
 ## Superpowers Workflow
 

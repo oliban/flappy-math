@@ -5,6 +5,57 @@ const translations = {
     // Menu
     title: 'Flappy Math',
     subtitle: 'Master your times tables!',
+    weeklyChallenge: 'Weekly Challenge',
+    weekLabel: 'Week',
+    weeklyHint: 'Speed rises every 3 correct answers',
+    play: 'Play',
+    practice: 'Practice',
+    practiceHint: 'Pick a table and speed',
+    highscores: 'Highscores',
+    editProfile: 'Change player',
+    back: 'Back',
+    playingAs: 'Playing as',
+    noScores: 'No scores yet. Be the first!',
+    newHighscore: 'New highscore!',
+    rank: 'Rank',
+    topSpeed: 'Top speed',
+    tapToFlap: 'Tap to flap',
+    spaceToFlap: 'SPACE or click to flap',
+    playAgain: 'Play again',
+    menu: 'Menu',
+
+    // Profile
+    whoIsPlaying: 'Who is playing?',
+    yourName: 'Your name',
+    namePlaceholder: 'Type your name',
+    pickAvatar: 'Pick your animal',
+    letsGo: "Let's go!",
+
+    // Gallery / unlocks
+    gallery: 'Character Gallery',
+    unlockedOf: 'unlocked',
+    newCharacter: 'New character unlocked!',
+    locked: 'Locked',
+    weeklyDropHint: 'A new character drops every week',
+    highscoreUnlockHint: 'Beat the top score for a bonus unlock (once a day)',
+    prev: 'Prev',
+    next: 'Next',
+    page: 'Page',
+    selectedCharacter: 'Playing as',
+
+    // Portrait warning
+    rotateTitle: 'Rotate your device',
+    rotateBody: 'Please turn to landscape to play',
+
+    // Avatars
+    avatar_bird: 'Bird',
+    avatar_cat: 'Cat',
+    avatar_frog: 'Frog',
+    avatar_penguin: 'Penguin',
+    avatar_owl: 'Owl',
+    avatar_fox: 'Fox',
+    avatar_panda: 'Panda',
+    avatar_rabbit: 'Rabbit',
     selectTable: 'Select Times Table',
     speedLevel: 'Speed Level',
     startGame: 'Start Game',
@@ -13,6 +64,7 @@ const translations = {
 
     // HUD
     table: 'Table',
+    score: 'Score',
     speed: 'Speed',
     streak: 'Streak',
     lives: 'Lives',
@@ -21,7 +73,7 @@ const translations = {
     gameOver: 'Game Over',
     finalScore: 'Final Score',
     bestStreak: 'Best Streak',
-    pressToContinue: 'SPACE to continue',
+    pressToContinue: 'Continue',
 
     // Mastery
     mastered: 'MASTERED!',
@@ -37,6 +89,57 @@ const translations = {
     // Menu
     title: 'Flappy Matte',
     subtitle: 'Bli mästare på multiplikation!',
+    weeklyChallenge: 'Veckans utmaning',
+    weekLabel: 'Vecka',
+    weeklyHint: 'Farten ökar var tredje rätta svar',
+    play: 'Spela',
+    practice: 'Träna',
+    practiceHint: 'Välj tabell och hastighet',
+    highscores: 'Topplista',
+    editProfile: 'Byt spelare',
+    back: 'Tillbaka',
+    playingAs: 'Spelar som',
+    noScores: 'Inga poäng ännu. Bli först!',
+    newHighscore: 'Nytt rekord!',
+    rank: 'Plats',
+    topSpeed: 'Toppfart',
+    tapToFlap: 'Tryck för att flaxa',
+    spaceToFlap: 'MELLANSLAG eller klicka för att flaxa',
+    playAgain: 'Spela igen',
+    menu: 'Meny',
+
+    // Profile
+    whoIsPlaying: 'Vem spelar?',
+    yourName: 'Ditt namn',
+    namePlaceholder: 'Skriv ditt namn',
+    pickAvatar: 'Välj ditt djur',
+    letsGo: 'Kör!',
+
+    // Gallery / unlocks
+    gallery: 'Figurgalleri',
+    unlockedOf: 'upplåsta',
+    newCharacter: 'Ny figur upplåst!',
+    locked: 'Låst',
+    weeklyDropHint: 'En ny figur släpps varje vecka',
+    highscoreUnlockHint: 'Slå toppresultatet för en bonusfigur (en per dag)',
+    prev: 'Föreg.',
+    next: 'Nästa',
+    page: 'Sida',
+    selectedCharacter: 'Spelar som',
+
+    // Portrait warning
+    rotateTitle: 'Vänd på enheten',
+    rotateBody: 'Vänd till liggande läge för att spela',
+
+    // Avatars
+    avatar_bird: 'Fågel',
+    avatar_cat: 'Katt',
+    avatar_frog: 'Groda',
+    avatar_penguin: 'Pingvin',
+    avatar_owl: 'Uggla',
+    avatar_fox: 'Räv',
+    avatar_panda: 'Panda',
+    avatar_rabbit: 'Kanin',
     selectTable: 'Välj Multiplikationstabell',
     speedLevel: 'Hastighetsnivå',
     startGame: 'Starta Spel',
@@ -45,6 +148,7 @@ const translations = {
 
     // HUD
     table: 'Tabell',
+    score: 'Poäng',
     speed: 'Hastighet',
     streak: 'Svit',
     lives: 'Liv',
@@ -53,7 +157,7 @@ const translations = {
     gameOver: 'Spelet Slut',
     finalScore: 'Slutpoäng',
     bestStreak: 'Bästa Svit',
-    pressToContinue: 'MELLANSLAG för att fortsätta',
+    pressToContinue: 'Fortsätt',
 
     // Mastery
     mastered: 'BEMÄSTRAD!',

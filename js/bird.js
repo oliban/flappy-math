@@ -1,19 +1,7 @@
-import { GRAVITY, FLAP_VELOCITY, BIRD_X, BIRD_SIZE, BASE_HEIGHT } from './constants.js';
+import { GRAVITY, FLAP_VELOCITY, BIRD_X, BIRD_SIZE, BASE_HEIGHT, GROUND_Y } from './constants.js';
 
-// Cached bird body gradient (created once, reused)
-let cachedBirdGradient = null;
-let gradientCtx = null;
-
-function ensureBirdGradient(ctx) {
-  if (gradientCtx === ctx && cachedBirdGradient) return;
-  gradientCtx = ctx;
-
-  const r = BIRD_SIZE / 2;
-  cachedBirdGradient = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
-  cachedBirdGradient.addColorStop(0, '#FFE566');
-  cachedBirdGradient.addColorStop(0.7, '#FFD700');
-  cachedBirdGradient.addColorStop(1, '#E5A800');
-}
+import { getAvatar, DEFAULT_AVATAR_ID } from './avatars.js';
+import { drawAvatarSprite } from './avatar-sprites.js';
 
 export function createBird() {
   const initialY = BASE_HEIGHT / 2;
@@ -28,6 +16,13 @@ export function createBird() {
     wingPhase: 0,
     bounceTimer: 0,
     isHurt: false,
+    avatarId: DEFAULT_AVATAR_ID,
+
+    setAvatar(id) {
+      if (getAvatar(id).id === id) {
+        this.avatarId = id;
+      }
+    },
 
     update() {
       this.velocity += GRAVITY;
@@ -53,8 +48,8 @@ export function createBird() {
       if (this.y < this.size / 2) {
         this.y = this.size / 2;
       }
-      if (this.y > BASE_HEIGHT - this.size / 2) {
-        this.y = BASE_HEIGHT - this.size / 2;
+      if (this.y > GROUND_Y - this.size / 2) {
+        this.y = GROUND_Y - this.size / 2;
       }
     },
 
@@ -68,17 +63,49 @@ export function createBird() {
       if (direction === 'auto') {
         // If falling (positive velocity), bounce up. If rising, bounce down.
         if (this.velocity >= 0) {
-          this.velocity = -1.5; // Bounce up
+          this.velocity = -2.2; // Bounce up
         } else {
-          this.velocity = 1.5; // Bounce down
+          this.velocity = 2.2; // Bounce down
         }
       } else if (direction === 'up') {
-        this.velocity = -1.5;
+        this.velocity = -2.2;
       } else if (direction === 'down') {
-        this.velocity = 1.5;
+        this.velocity = 2.2;
       }
       this.bounceTimer = 30;
       this.isHurt = true;
+    },
+
+    // Floor/ceiling contact: always push away so the bird can never get pinned.
+    // Returns true when this contact should cost a life (not already hurt).
+    hitFloor() {
+      this.y = GROUND_Y - this.size / 2;
+      const hurt = this.canBeHurt();
+      if (hurt) {
+        this.bounce('up');
+      } else {
+        this.velocity = Math.min(this.velocity, -2.2);
+      }
+      return hurt;
+    },
+
+    hitCeiling() {
+      this.y = this.size / 2;
+      const hurt = this.canBeHurt();
+      if (hurt) {
+        this.bounce('down');
+      } else {
+        this.velocity = Math.max(this.velocity, 2.2);
+      }
+      return hurt;
+    },
+
+    isOnFloor() {
+      return this.y >= GROUND_Y - this.size / 2;
+    },
+
+    isOnCeiling() {
+      return this.y <= this.size / 2;
     },
 
     canBeHurt() {
@@ -96,80 +123,16 @@ export function createBird() {
     },
 
     render(ctx) {
-      ensureBirdGradient(ctx);
-
       ctx.save();
       ctx.translate(this.x, this.y);
       ctx.rotate(this.rotation);
 
-      // Flash red when hurt
+      // Flash when hurt
       if (this.isHurt && Math.floor(this.bounceTimer / 4) % 2 === 0) {
         ctx.globalAlpha = 0.5;
       }
 
-      const r = this.size / 2;
-
-      // Body shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-      ctx.beginPath();
-      ctx.ellipse(2, 2, r, r * 0.85, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Body with cached gradient
-      ctx.fillStyle = cachedBirdGradient;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, r, r * 0.85, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Body outline
-      ctx.strokeStyle = '#CC8800';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // Wing
-      const wingOffset = Math.sin(this.wingPhase) * 5;
-      ctx.fillStyle = '#E5C100';
-      ctx.beginPath();
-      ctx.ellipse(-5, wingOffset, r * 0.5, r * 0.35, -0.3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#CC8800';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Eye white
-      ctx.fillStyle = '#FFF';
-      ctx.beginPath();
-      ctx.arc(r * 0.35, -r * 0.15, r * 0.35, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Eye pupil
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.arc(r * 0.45, -r * 0.1, r * 0.18, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Eye highlight
-      ctx.fillStyle = '#FFF';
-      ctx.beginPath();
-      ctx.arc(r * 0.5, -r * 0.2, r * 0.08, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Beak
-      ctx.fillStyle = '#FF6B35';
-      ctx.beginPath();
-      ctx.moveTo(r * 0.7, r * 0.1);
-      ctx.lineTo(r * 1.3, r * 0.25);
-      ctx.lineTo(r * 0.7, r * 0.45);
-      ctx.closePath();
-      ctx.fill();
-
-      // Beak line
-      ctx.strokeStyle = '#CC4400';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(r * 0.7, r * 0.28);
-      ctx.lineTo(r * 1.2, r * 0.25);
-      ctx.stroke();
+      drawAvatarSprite(ctx, this.avatarId, this.size / 2, this.wingPhase);
 
       ctx.restore();
     }

@@ -1,71 +1,80 @@
+import { createAudioEngine } from './audio-engine.js';
+
 const VOICE_STORAGE_KEY = 'flappy-math-voice';
 
-export function createVoicePlayer(storage, AudioClass) {
+export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fetchFn } = {}) {
   const _storage = storage !== undefined ? storage : (typeof localStorage !== 'undefined' ? localStorage : null);
   const _Audio = AudioClass !== undefined ? AudioClass : (typeof Audio !== 'undefined' ? Audio : null);
+  const engine = createAudioEngine({ audioContextFactory, fetchFn });
 
   let enabled = true;
   let currentLang = 'en';
-  const audioCache = new Map();
+  let sequenceId = 0;             // newer speech cancels older pending speech
+  const elementCache = new Map(); // fallback <audio> elements
 
   function getAudioPath(type, value) {
     const prefix = currentLang === 'sv' ? 'sv' : 'en';
-    if (type === 'number') {
-      return `sounds/numbers/${prefix}/${prefix}_num_${value}.mp3`;
-    } else if (type === 'times') {
-      return `sounds/numbers/${prefix}/${prefix}_times.mp3`;
-    }
+    if (type === 'number') return `sounds/numbers/${prefix}/${prefix}_num_${value}.mp3`;
+    if (type === 'times') return `sounds/numbers/${prefix}/${prefix}_times.mp3`;
     return null;
   }
 
-  function getAudio(path) {
-    if (!audioCache.has(path)) {
-      const audio = new _Audio(path);
-      audio.load();
-      audioCache.set(path, audio);
-    }
-    return audioCache.get(path);
+  // --- Web Audio path: decode once, schedule clips back to back (gapless) ---
+  function playSequenceWebAudio(paths) {
+    const id = ++sequenceId;
+    engine.resume();
+    Promise.all(paths.map(p => engine.load(p))).then(buffers => {
+      if (id !== sequenceId) return; // superseded by a newer question
+      let when = engine.now();
+      for (const buffer of buffers) {
+        if (!buffer) continue;
+        engine.play(buffer, when);
+        when += buffer.duration;
+      }
+    });
   }
 
-  function playSequence(paths) {
-    if (!_Audio || paths.length === 0) return;
+  // --- Fallback: <audio> elements chained on 'ended' ---
+  function getElement(path) {
+    if (!elementCache.has(path)) {
+      const audio = new _Audio(path);
+      audio.load();
+      elementCache.set(path, audio);
+    }
+    return elementCache.get(path);
+  }
 
+  function playSequenceElements(paths) {
     let index = 0;
-
-    function playNext() {
+    const playNext = () => {
       if (index >= paths.length) return;
-
-      const audio = getAudio(paths[index]);
+      const clone = getElement(paths[index]).cloneNode();
       index++;
-
-      // Clone to allow overlapping/rapid playback
-      const clone = audio.cloneNode();
       clone.onended = playNext;
       clone.onerror = playNext;
       clone.play().catch(playNext);
-    }
-
+    };
     playNext();
+  }
+
+  function playSequence(paths) {
+    if (paths.length === 0) return;
+    if (engine.isAvailable()) playSequenceWebAudio(paths);
+    else if (_Audio) playSequenceElements(paths);
   }
 
   return {
     init() {
       if (!_storage) return;
       const saved = _storage.getItem(VOICE_STORAGE_KEY);
-      if (saved !== null) {
-        enabled = saved === 'true';
-      }
+      if (saved !== null && saved !== undefined) enabled = saved === 'true';
     },
 
-    isEnabled() {
-      return enabled;
-    },
+    isEnabled() { return enabled; },
 
     setEnabled(value) {
       enabled = value;
-      if (_storage) {
-        _storage.setItem(VOICE_STORAGE_KEY, String(value));
-      }
+      if (_storage) _storage.setItem(VOICE_STORAGE_KEY, String(value));
     },
 
     toggle() {
@@ -73,40 +82,27 @@ export function createVoicePlayer(storage, AudioClass) {
       return enabled;
     },
 
-    setLanguage(lang) {
-      currentLang = lang;
-    },
+    setLanguage(lang) { currentLang = lang; },
 
     speakQuestion(a, b) {
-      if (!enabled || !_Audio) return;
-
-      playSequence([
-        getAudioPath('number', a),
-        getAudioPath('times'),
-        getAudioPath('number', b)
-      ]);
+      if (!enabled || !this.isAvailable()) return;
+      playSequence([getAudioPath('number', a), getAudioPath('times'), getAudioPath('number', b)]);
     },
 
     speakAnswer(answer) {
-      if (!enabled || !_Audio) return;
-
+      if (!enabled || !this.isAvailable()) return;
       playSequence([getAudioPath('number', answer)]);
     },
 
     preload(numbers) {
-      if (!_Audio) return;
-
-      // Preload "times" word
-      getAudio(getAudioPath('times'));
-
-      // Preload all numbers
-      for (const n of numbers) {
-        getAudio(getAudioPath('number', n));
-      }
+      if (!this.isAvailable()) return;
+      const paths = [getAudioPath('times'), ...numbers.map(n => getAudioPath('number', n))];
+      if (engine.isAvailable()) engine.loadAll(paths, 3);
+      else paths.forEach(getElement);
     },
 
     isAvailable() {
-      return _Audio !== null && _Audio !== undefined;
+      return engine.isAvailable() || (_Audio !== null && _Audio !== undefined);
     }
   };
 }
