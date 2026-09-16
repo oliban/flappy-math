@@ -186,7 +186,7 @@ const translations = {
   }
 };
 
-let currentLanguage = 'en';
+let currentLanguage = 'sv'; // default; a saved preference overrides this in initLanguage()
 
 export function setLanguage(lang) {
   if (translations[lang]) {
