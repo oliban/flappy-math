@@ -27,3 +27,9 @@ export const MASTERY_STREAK = 10;
 
 // Weekly challenge: correct answers needed to move up one speed level
 export const HITS_PER_SPEED_LEVEL = 3;
+
+// Multiplication table and speed bounds (shared with the leaderboard server)
+export const MIN_TABLE = 2;
+export const MAX_TABLE = 12;
+export const MIN_SPEED = 1;
+export const MAX_SPEED = 99;

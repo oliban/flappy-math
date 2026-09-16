@@ -7,7 +7,8 @@ const SOUNDS = {
   wrong: 'sounds/wrong.mp3',
   flap: 'sounds/flap.mp3',
   gameover: 'sounds/gameover.mp3',
-  mastery: 'sounds/mastery.mp3'
+  mastery: 'sounds/mastery.mp3',
+  fanfare: 'sounds/fanfare.wav'   // beating your own best score
 };
 
 export function createSoundPlayer({ audioContextFactory, fetchFn, AudioClass } = {}) {

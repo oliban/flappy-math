@@ -35,21 +35,22 @@ describe('Sound Player (Web Audio)', () => {
   let wa;
   beforeEach(() => { wa = mockWebAudio(); });
 
-  test('unlock creates the context, resumes it and preloads all 7 sounds', async () => {
+  test('unlock creates the context, resumes it and preloads all 8 sounds', async () => {
     const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
     player.unlock();
     await flush(); await flush();
     expect(wa.ctx.resume).toHaveBeenCalled();
-    expect(wa.fetched.length).toBe(7);
+    expect(wa.fetched.length).toBe(8);
     expect(wa.fetched.some(u => u.endsWith('crash.mp3'))).toBe(true);
-    expect(wa.decoded.length).toBe(7);
+    expect(wa.fetched.some(u => u.endsWith('fanfare.wav'))).toBe(true);
+    expect(wa.decoded.length).toBe(8);
   });
 
   test('unlock only runs once', async () => {
     const player = createSoundPlayer({ audioContextFactory: wa.factory, fetchFn: wa.fetchFn });
     player.unlock(); player.unlock();
     await flush(); await flush();
-    expect(wa.fetched.length).toBe(7);
+    expect(wa.fetched.length).toBe(8);
   });
 
   test('play starts a decoded buffer from memory without fetching again', async () => {
@@ -93,7 +94,7 @@ describe('Sound Player (fallback to audio elements)', () => {
     const { Cls, instances } = MockAudioClass();
     const player = createSoundPlayer({ audioContextFactory: null, AudioClass: Cls });
     player.unlock();
-    expect(instances.length).toBe(7);
+    expect(instances.length).toBe(8);
     const crash = instances.find(a => a.src.includes('crash.mp3'));
     crash.currentTime = 5;
     player.play('crash');

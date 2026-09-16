@@ -3,6 +3,21 @@ import { AVATARS, DEFAULT_AVATAR_ID } from './avatars.js';
 const PLAYER_STORAGE_KEY = 'flappy-math-player';
 export const MAX_NAME_LENGTH = 12;
 
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+
+// Strips control characters, collapses whitespace and trims to a safe length.
+// Shared with the leaderboard server, so names are cleaned the same way everywhere.
+export function sanitizeName(name) {
+  if (typeof name !== 'string') return '';
+  return name
+    .replace(CONTROL_CHARS, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_NAME_LENGTH)
+    .trim();
+}
+
 export function createPlayerProfile(storage = window.localStorage) {
   let name = '';
   let avatarId = DEFAULT_AVATAR_ID;
@@ -33,7 +48,7 @@ export function createPlayerProfile(storage = window.localStorage) {
     getName() { return name; },
     hasName() { return name.length > 0; },
     setName(value) {
-      name = String(value ?? '').trim().slice(0, MAX_NAME_LENGTH);
+      name = sanitizeName(String(value ?? ''));
       save();
     },
     getAvatarId() { return avatarId; },

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { createPlayerProfile } from './player.js';
+import { createPlayerProfile, sanitizeName } from './player.js';
 
 function mockStorage() {
   const data = {};
@@ -56,5 +56,18 @@ describe('player profile', () => {
     storage.setItem('flappy-math-player', '{{not json');
     const p = createPlayerProfile(storage);
     expect(p.hasName()).toBe(false);
+  });
+});
+
+describe('sanitizeName', () => {
+  test('strips control characters and collapses whitespace', () => {
+    expect(sanitizeName('  Ell\u0007a   Bo\u001Fb ')).toBe('Ella Bob');
+  });
+  test('caps at 12 characters and trims again', () => {
+    expect(sanitizeName('ABCDEFGHIJK LMNOP')).toBe('ABCDEFGHIJK');
+  });
+  test('non-strings become empty', () => {
+    expect(sanitizeName(null)).toBe('');
+    expect(sanitizeName(42)).toBe('');
   });
 });

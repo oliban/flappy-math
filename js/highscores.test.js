@@ -90,3 +90,17 @@ describe('highscore date formatting', () => {
     expect(formatEntryDate('not a date', 'en-GB')).toBe('');
   });
 });
+
+describe('personal best', () => {
+  test('bestScoreFor returns the highest local score for that name, case-insensitively', () => {
+    const hs = createHighscores(mockStorage());
+    hs.add(entry('Ella', 4));
+    hs.add(entry('ella', 9));
+    hs.add(entry('Noah', 20));
+    expect(hs.bestScoreFor('ELLA')).toBe(9);
+  });
+
+  test('bestScoreFor is 0 for an unknown name', () => {
+    expect(createHighscores(mockStorage()).bestScoreFor('Nobody')).toBe(0);
+  });
+});

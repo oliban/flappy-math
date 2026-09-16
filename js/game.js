@@ -17,6 +17,8 @@ import { drawAvatarSprite } from './avatar-sprites.js';
 import * as Avatars from './avatars.js';
 import { createUnlocks } from './unlocks.js';
 import { createCharacterVoices } from './voices.js';
+import { createConfetti } from './confetti.js';
+import { createGlobalScores } from './globalScores.js';
 import { getISOWeek, getWeeklyTable } from './weekly.js';
 import { createRun, MODES } from './run.js';
 import { createBackground } from './background.js';
@@ -55,6 +57,12 @@ class Game {
     this.starterIds = Avatars.STARTER_IDS || this.allAvatarIds;
     this.unlocks = createUnlocks({ starterIds: this.starterIds, allIds: this.allAvatarIds });
     this.toast = null;          // { avatarId, title, until }
+    this.confetti = createConfetti();
+    this.globalScores = createGlobalScores();
+    this.global = { status: 'idle', entries: [], fetchedAt: 0 }; // shared leaderboard cache
+    this.highscoreTab = 'local'; // 'local' | 'global'
+    this.globalRank = null;
+    this.isPersonalBest = false;
     this.unlockedThisRun = null;
     this.galleryPage = 0;
     this.secretTaps = 0;
@@ -477,6 +485,7 @@ class Game {
   }
 
   update() {
+    this.confetti.update(1);
     if (this.state.current() !== STATES.PLAYING) {
       this.background.update(0.3);
       return;
@@ -611,14 +620,20 @@ class Game {
     this.isFadingOut = false;
     this.fadeOut = 0;
 
+    this.isPersonalBest = false;
+    this.globalRank = null;
     if (this.run.countsForHighscore()) {
+      const name = this.profile.getName();
+      const previousBest = this.highscores.bestScoreFor(name);
       this.lastRank = this.highscores.add({
-        name: this.profile.getName(),
+        name,
         avatar: this.profile.getAvatarId(),
         score: this.scoring.score,
         table: this.run.table,
         maxSpeed: this.run.maxSpeed
       });
+      this.isPersonalBest = this.scoring.score > 0 && this.scoring.score > previousBest;
+      this.submitToGlobal();
     }
 
     this.unlockedThisRun = null;
@@ -630,7 +645,56 @@ class Game {
       }
     }
 
-    if (!this.showMasteryMessage) this.sound.play('gameover');
+    if (this.isPersonalBest) {
+      this.celebrateRecord();
+    } else if (!this.showMasteryMessage) {
+      this.sound.play('gameover');
+    }
+  }
+
+  // Fanfare and confetti cannons for beating your own best score
+  celebrateRecord() {
+    this.sound.play('fanfare');
+    this.confetti.clear();
+    const floor = this.canvasHeight + 10;
+    const cannonSpeed = this.canvasHeight / 42;
+    this.confetti.burst({ x: 40, y: floor, count: 70, angle: -Math.PI / 2.6, spread: Math.PI / 5, speed: cannonSpeed });
+    this.confetti.burst({ x: this.canvasWidth - 40, y: floor, count: 70, angle: -Math.PI + Math.PI / 2.6, spread: Math.PI / 5, speed: cannonSpeed });
+    this.confetti.burst({ x: this.canvasWidth / 2, y: 120, count: 50, angle: -Math.PI / 2, spread: Math.PI * 1.6, speed: cannonSpeed * 0.55 });
+  }
+
+  // Offer the finished weekly run to the shared leaderboard (fails silently offline)
+  submitToGlobal() {
+    if (!this.globalScores.isAvailable() || this.scoring.score <= 0) return;
+    const run = this.run;
+    const score = this.scoring.score;
+    this.globalScores.submit({
+      name: this.profile.getName(),
+      avatar: this.profile.getAvatarId(),
+      score,
+      table: run.table,
+      speed: run.maxSpeed,
+      streak: this.scoring.bestStreak
+    }).then(result => {
+      if (!result.ok) return;
+      if (this.run === run && this.scoring.score === score) this.globalRank = result.rank;
+      this.global = { status: 'ok', entries: result.entries, fetchedAt: performance.now() };
+    });
+  }
+
+  refreshGlobal(force = false) {
+    if (!this.globalScores.isAvailable()) {
+      this.global = { status: 'error', entries: [], fetchedAt: performance.now() };
+      return;
+    }
+    const stale = performance.now() - this.global.fetchedAt > 30000;
+    if (this.global.status === 'loading' || (!force && !stale && this.global.status !== 'idle')) return;
+    this.global = { ...this.global, status: 'loading' };
+    this.globalScores.fetchTop({ limit: 10 }).then(result => {
+      this.global = result.ok
+        ? { status: 'ok', entries: result.entries, fetchedAt: performance.now() }
+        : { status: 'error', entries: [], fetchedAt: performance.now() };
+    });
   }
 
   // ---------- Rendering ----------
@@ -1091,9 +1155,9 @@ class Game {
     ctx.fillRect(0, 0, W, this.canvasHeight);
 
     const cardW = Math.min(520, W - 40);
-    const cardH = 400;
+    const cardH = 430;
     const cardX = cx - cardW / 2;
-    const cardY = 40;
+    const cardY = 36;
     drawCard(ctx, cardX, cardY, cardW, cardH, { radius: 26, fill: this.showMasteryMessage ? '#FFF6D6' : COLORS.card });
 
     ctx.textAlign = 'center';
@@ -1152,16 +1216,24 @@ class Game {
         ctx.fillText(name, cardX + cardW - 60, cardY + 112);
       }
 
-      if (this.lastRank) {
-        const badgeW = 260;
+      if (this.lastRank || this.isPersonalBest) {
+        const label = this.isPersonalBest
+          ? `🎉 ${t('newPersonalBest')}${this.lastRank ? `  ${t('rank')} #${this.lastRank}` : ''}`
+          : `🏆 ${t('newHighscore')}  ${t('rank')} #${this.lastRank}`;
+        ctx.font = font(18, '700');
+        const badgeW = Math.ceil(ctx.measureText(label).width + 40);
         ctx.fillStyle = COLORS.gold;
         roundRect(ctx, cx - badgeW / 2, cardY + 262, badgeW, 40, 20);
         ctx.fill();
         ctx.fillStyle = COLORS.ink;
-        ctx.font = font(18, '700');
         ctx.textBaseline = 'middle';
-        ctx.fillText(`🏆 ${t('newHighscore')}  ${t('rank')} #${this.lastRank}`, cx, cardY + 282);
+        ctx.fillText(label, cx, cardY + 282);
         ctx.textBaseline = 'alphabetic';
+      }
+      if (this.globalRank) {
+        ctx.fillStyle = COLORS.secondary;
+        ctx.font = font(14, '700');
+        ctx.fillText(`🌍 ${t('globalRank')} #${this.globalRank}`, cx, cardY + 322);
       }
     }
 
@@ -1187,6 +1259,9 @@ class Game {
     const menu = drawButton(ctx, bx, btnY, wMenu, btnH, t('menu'),
       { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 19 });
     this.hitAreas.add(menu, () => this.state.returnToMenu());
+
+    // Confetti sits above the card so the celebration reads as one moment
+    this.confetti.render(ctx);
   }
 
   renderHighscores() {
@@ -1200,19 +1275,50 @@ class Game {
     const cardW = Math.min(680, W - 40);
     const cardX = cx - cardW / 2;
     const cardY = 84;
-    const cardH = 420;
+    const cardH = 430;
     drawCard(ctx, cardX, cardY, cardW, cardH, { radius: 24 });
 
-    const entries = this.highscores.list();
+    // Tabs: this device / everyone
+    const tabW = 150;
+    const tabH = 34;
+    const tabY = cardY + 12;
+    const tabs = [['local', t('localTab'), '📱'], ['global', t('globalTab'), '🌍']];
+    tabs.forEach(([id, label, icon], i) => {
+      const x = cx - tabW - 6 + i * (tabW + 12);
+      const active = this.highscoreTab === id;
+      ctx.fillStyle = active ? COLORS.secondary : COLORS.muted;
+      roundRect(ctx, x, tabY, tabW, tabH, 17);
+      ctx.fill();
+      ctx.fillStyle = active ? '#FFF' : COLORS.inkSoft;
+      ctx.font = font(15, '700');
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${icon} ${label}`, x + tabW / 2, tabY + tabH / 2);
+      this.hitAreas.add({ x, y: tabY, width: tabW, height: tabH }, () => {
+        this.highscoreTab = id;
+        if (id === 'global') this.refreshGlobal();
+      });
+    });
+    ctx.textBaseline = 'alphabetic';
+
+    const isGlobal = this.highscoreTab === 'global';
+    if (isGlobal) this.refreshGlobal();
+    const entries = isGlobal
+      ? this.global.entries.map(e => ({ ...e, maxSpeed: e.speed }))
+      : this.highscores.list();
     const rowH = 33;
-    const listY = cardY + 18;
+    const listY = cardY + 64;
 
     if (entries.length === 0) {
       ctx.fillStyle = COLORS.inkSoft;
-      ctx.font = font(20, '600');
+      ctx.font = font(18, '600');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(t('noScores'), cx, cardY + cardH / 2 - 30);
+      const message = !isGlobal ? t('noScores')
+        : this.global.status === 'loading' ? t('globalLoading')
+        : this.global.status === 'error' ? t('globalOffline')
+        : t('noScores');
+      ctx.fillText(message, cx, cardY + cardH / 2 - 10);
       ctx.textBaseline = 'alphabetic';
     }
 
@@ -1236,7 +1342,9 @@ class Game {
 
     entries.forEach((e, i) => {
       const y = listY + 18 + i * rowH + rowH / 2;
-      const isNew = this.lastRank === i + 1;
+      const isNew = isGlobal
+        ? String(e.name).toLowerCase() === this.profile.getName().toLowerCase()
+        : this.lastRank === i + 1;
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
 
       if (isNew || i % 2 === 0) {
@@ -1277,7 +1385,7 @@ class Game {
     });
     ctx.textBaseline = 'alphabetic';
 
-    const back = drawButton(ctx, cx - 90, cardY + cardH + 14, 180, 52, t('back'),
+    const back = drawButton(ctx, cx - 90, cardY + cardH + 8, 180, 48, t('back'),
       { color: COLORS.secondary, dark: COLORS.secondaryDark, fontSize: 20 });
     this.hitAreas.add(back, () => this.state.returnToMenu());
   }

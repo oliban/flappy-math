@@ -30,6 +30,12 @@ export function createHighscores(storage = window.localStorage) {
       return entries.map(e => ({ ...e }));
     },
 
+    // Highest local score recorded under this name (case-insensitive), 0 if none
+    bestScoreFor(name) {
+      const key = String(name || '').toLowerCase();
+      return entries.reduce((best, e) => (String(e.name).toLowerCase() === key ? Math.max(best, e.score) : best), 0);
+    },
+
     // Returns the 1-based rank of the new entry, or null if it did not place.
     add(entry) {
       if (!entry || !(entry.score > 0)) return null;

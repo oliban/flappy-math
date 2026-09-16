@@ -3,12 +3,22 @@ primary_region = "arn"
 
 [build]
 
+[env]
+  DATA_DIR = "/data"
+  PORT = "8080"
+
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
+
+# Global highscores are stored here, so they survive deploys and restarts.
+# Create it once with: fly volumes create flappy_data --size 1
+[[mounts]]
+  source = "flappy_data"
+  destination = "/data"
 
 [[vm]]
   size = "shared-cpu-1x"

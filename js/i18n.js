@@ -31,6 +31,14 @@ const translations = {
     pickAvatar: 'Choose your character',
     letsGo: "Let's go!",
 
+    // Global leaderboard
+    localTab: 'This device',
+    globalTab: 'Everyone',
+    globalOffline: 'Could not reach the global list. Try again later.',
+    globalLoading: 'Loading…',
+    globalRank: 'World rank',
+    newPersonalBest: 'New personal best!',
+
     // Gallery / unlocks
     gallery: 'Character Gallery',
     unlockedOf: 'unlocked',
@@ -114,6 +122,14 @@ const translations = {
     namePlaceholder: 'Skriv ditt namn',
     pickAvatar: 'Välj din figur',
     letsGo: 'Kör!',
+
+    // Global leaderboard
+    localTab: 'Den här enheten',
+    globalTab: 'Alla',
+    globalOffline: 'Kunde inte nå topplistan. Försök igen senare.',
+    globalLoading: 'Laddar…',
+    globalRank: 'Världsplacering',
+    newPersonalBest: 'Nytt personbästa!',
 
     // Gallery / unlocks
     gallery: 'Figurgalleri',
