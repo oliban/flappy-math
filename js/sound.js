@@ -1,11 +1,13 @@
-const SOUNDS = {
+export const SOUNDS = {
   crash: 'sounds/crash.mp3',
   thud: 'sounds/thud.mp3',
   correct: 'sounds/correct.mp3',
   wrong: 'sounds/wrong.mp3',
   flap: 'sounds/flap.mp3',
   gameover: 'sounds/gameover.mp3',
-  mastery: 'sounds/mastery.mp3'
+  mastery: 'sounds/mastery.mp3',
+  // Played when a run beats the player's own local highscore.
+  fanfare: 'sounds/fanfare.wav'
 };
 
 export function createSoundPlayer(AudioClass = Audio) {

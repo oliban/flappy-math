@@ -12,6 +12,7 @@ import { createSkins, SKINS } from './skins.js';
 import { createGlobalScores } from './globalScores.js';
 import { createPlayer } from './player.js';
 import { drawBirdShape } from './bird.js';
+import { createConfetti } from './confetti.js';
 import { createSoundPlayer } from './sound.js';
 import { createVoicePlayer } from './voice.js';
 import { t, setLanguage, getLanguage, getAvailableLanguages, initLanguage } from './i18n.js';
@@ -37,6 +38,7 @@ class Game {
     this.skinStorage = createStorage(window.localStorage, SKINS_KEY);
     this.player = createPlayer();
     this.globalScores = createGlobalScores();
+    this.confetti = createConfetti();
     this.sound = createSoundPlayer();
     this.voice = createVoicePlayer();
     this.voice.init();
@@ -433,6 +435,7 @@ class Game {
 
   startGame() {
     this.state.startGame();
+    this.confetti.clear();
     this.bird.reset();
     this.scoring.reset();
     this.pipes = [];
@@ -517,6 +520,7 @@ class Game {
     }
 
     this.update(deltaTime, dt, timestamp);
+    this.confetti.update(Math.min(dt, 3)); // clamp after a tab switch
     this.render();
 
     requestAnimationFrame(this.gameLoop);
@@ -693,13 +697,37 @@ class Game {
 
     this.recordRun();
 
-    if (this.showMasteryMessage) {
-      // The mastery fanfare already played when the streak was completed.
-    } else if (this.lastResult && this.lastResult.isPersonalBest) {
-      this.sound.play('mastery');
+    if (this.lastResult && this.lastResult.isPersonalBest) {
+      this.celebrateRecord();
+    } else if (this.showMasteryMessage) {
+      // The mastery sound already played when the streak was completed.
     } else {
       this.sound.play('gameover');
     }
+  }
+
+  // Fanfare and confetti cannons for beating your own local highscore.
+  celebrateRecord() {
+    this.sound.play('fanfare');
+
+    const floor = this.canvasHeight + 10;
+    const cannonSpeed = this.canvasHeight / 42;
+
+    // Two cannons firing inwards from the bottom corners...
+    this.confetti.burst({
+      x: 40, y: floor, count: 70,
+      angle: -Math.PI / 2.6, spread: Math.PI / 5, speed: cannonSpeed
+    });
+    this.confetti.burst({
+      x: this.canvasWidth - 40, y: floor, count: 70,
+      angle: -Math.PI + Math.PI / 2.6, spread: Math.PI / 5, speed: cannonSpeed
+    });
+
+    // ...and a shower over the card itself.
+    this.confetti.burst({
+      x: this.canvasWidth / 2, y: 120, count: 50,
+      angle: -Math.PI / 2, spread: Math.PI * 1.6, speed: cannonSpeed * 0.55
+    });
   }
 
   // Stores the finished run locally, hands out the reward for a new personal
@@ -1638,6 +1666,9 @@ class Game {
     }
 
     this.renderRewardStrip(centerX);
+
+    // Confetti sits above the card so the celebration reads as one moment.
+    this.confetti.render(ctx);
 
     // Footer buttons: continue, highscores, and (when needed) set a name
     const buttons = this.getGameOverButtons();

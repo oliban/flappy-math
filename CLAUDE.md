@@ -30,6 +30,7 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/storage.js` - LocalStorage persistence (one factory per stored document)
 - `js/highscores.js` - Local highscore list and personal bests per table
 - `js/skins.js` - Bird skins, unlocked by beating a personal best
+- `js/confetti.js` - Confetti particles for the new-record celebration
 - `js/globalScores.js` - Client for the shared leaderboard API
 - `js/player.js` - Player name used on the global list
 - `server/server.js` - Static file + API server (Node stdlib only)
@@ -38,7 +39,8 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 
 **Highscores:**
 - Local list (LocalStorage) holds the top 20 runs plus a personal best per table
-- Beating a local personal best unlocks the next bird skin - the only reward path
+- Beating a local personal best plays `sounds/fanfare.wav`, fires confetti and
+  unlocks the next bird skin - the only reward path
 - Global list lives on the server (`DATA_DIR/scores.json`), one best run per
   player per table, and degrades to an "unavailable" message when offline
 

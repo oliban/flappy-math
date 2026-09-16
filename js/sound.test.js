@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { createSoundPlayer } from './sound.js';
+import { createSoundPlayer, SOUNDS } from './sound.js';
 
 describe('Sound Player', () => {
   let mockAudios;
@@ -23,7 +23,7 @@ describe('Sound Player', () => {
     const player = createSoundPlayer(MockAudioClass);
     player.preload();
 
-    expect(mockAudios.length).toBe(7);
+    expect(mockAudios.length).toBe(Object.keys(SOUNDS).length);
     mockAudios.forEach(audio => {
       expect(audio.load).toHaveBeenCalled();
     });
@@ -68,7 +68,7 @@ describe('Sound Player', () => {
     const player = createSoundPlayer(MockAudioClass);
     player.unlock();
 
-    expect(mockAudios.length).toBe(7);
+    expect(mockAudios.length).toBe(Object.keys(SOUNDS).length);
   });
 
   test('unlock only runs once', () => {
@@ -77,7 +77,7 @@ describe('Sound Player', () => {
     player.unlock();
 
     // Should only create audio elements once
-    expect(mockAudios.length).toBe(7);
+    expect(mockAudios.length).toBe(Object.keys(SOUNDS).length);
   });
 
   test('mute state can be toggled', () => {

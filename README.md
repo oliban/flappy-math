@@ -29,8 +29,9 @@ Two lists, reachable from the menu or the game over screen:
   list. If the server cannot be reached, the global tab says so and the rest of
   the game carries on.
 
-**Reward:** every time you beat your own personal best for a table, the next
-bird skin unlocks and is equipped right away. There are nine birds to collect.
+**Reward:** every time you beat your own personal best for a table, a fanfare
+plays, confetti fires across the game over screen, and the next bird skin
+unlocks and is equipped right away. There are nine birds to collect.
 
 ## Features
 
@@ -39,6 +40,7 @@ bird skin unlocks and is equipped right away. There are nine birds to collect.
 - Progress tracking with best speed saved per table
 - Mastery system: 10 correct in a row unlocks higher speeds
 - Local and global highscore lists
+- Fanfare and confetti when you beat your own record
 - Unlockable bird skins as a reward for beating your own scores
 - Multi-language support (English, Swedish)
 - LocalStorage persistence for progress
