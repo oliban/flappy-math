@@ -43,9 +43,15 @@ describe('validateEntry', () => {
   });
 
   test('rejects an out-of-range table', () => {
-    expect(validateEntry(run({ table: 1 })).error).toBe('invalid-table');
+    expect(validateEntry(run({ table: 0 })).error).toBe('invalid-table');
     expect(validateEntry(run({ table: 13 })).error).toBe('invalid-table');
     expect(validateEntry(run({ table: 'four' })).error).toBe('invalid-table');
+  });
+
+  test('accepts the whole playable range, including the 1x table', () => {
+    for (let table = 1; table <= 12; table++) {
+      expect(validateEntry(run({ table })).valid).toBe(true);
+    }
   });
 
   test('rejects an out-of-range speed', () => {

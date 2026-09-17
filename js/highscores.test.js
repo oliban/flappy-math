@@ -104,3 +104,14 @@ describe('personal best', () => {
     expect(createHighscores(mockStorage()).bestScoreFor('Nobody')).toBe(0);
   });
 });
+
+describe('per-table lists', () => {
+  test('listForTable returns only that table, best first', () => {
+    const hs = createHighscores(mockStorage());
+    hs.add(entry('A', 5, { table: 6 }));
+    hs.add(entry('B', 9, { table: 7 }));
+    hs.add(entry('C', 7, { table: 6 }));
+    expect(hs.listForTable(6).map(e => e.name)).toEqual(['C', 'A']);
+    expect(hs.listForTable(null).map(e => e.name)).toEqual(['B', 'C', 'A']);
+  });
+});

@@ -18,3 +18,9 @@ export function getWeeklyTable(date = new Date()) {
   const week = getISOWeek(date);
   return MIN_TABLE + ((week - 1) % TABLE_COUNT);
 }
+
+// Whole days until the table changes (ISO weeks start on Monday). 1..7
+export function daysUntilNextTable(date = new Date()) {
+  const day = date.getDay() || 7; // Monday = 1 ... Sunday = 7
+  return 8 - day;
+}

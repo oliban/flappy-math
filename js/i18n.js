@@ -32,6 +32,11 @@ const translations = {
     letsGo: "Let's go!",
 
     // Global leaderboard
+    allTables: 'All tables',
+    thisWeek: 'this week',
+    newTableIn: 'New table in',
+    days: 'days',
+    day: 'day',
     localTab: 'This device',
     globalTab: 'Everyone',
     globalOffline: 'Could not reach the global list. Try again later.',
@@ -124,6 +129,11 @@ const translations = {
     letsGo: 'Kör!',
 
     // Global leaderboard
+    allTables: 'Alla tabeller',
+    thisWeek: 'denna vecka',
+    newTableIn: 'Ny tabell om',
+    days: 'dagar',
+    day: 'dag',
     localTab: 'Den här enheten',
     globalTab: 'Alla',
     globalOffline: 'Kunde inte nå topplistan. Försök igen senare.',

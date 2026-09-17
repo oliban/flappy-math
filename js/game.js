@@ -1,4 +1,4 @@
-import { BASE_HEIGHT } from './constants.js';
+import { BASE_HEIGHT, MIN_TABLE, MAX_TABLE } from './constants.js';
 import { pipeSpeedFor } from './pace.js';
 import { createGameState, STATES } from './state.js';
 import { createBird } from './bird.js';
@@ -19,7 +19,7 @@ import { createUnlocks } from './unlocks.js';
 import { createCharacterVoices } from './voices.js';
 import { createConfetti } from './confetti.js';
 import { createGlobalScores } from './globalScores.js';
-import { getISOWeek, getWeeklyTable } from './weekly.js';
+import { getISOWeek, getWeeklyTable, daysUntilNextTable } from './weekly.js';
 import { createRun, MODES } from './run.js';
 import { createBackground } from './background.js';
 import { createProfileUI } from './profile-ui.js';
@@ -61,6 +61,7 @@ class Game {
     this.globalScores = createGlobalScores();
     this.global = { status: 'idle', entries: [], fetchedAt: 0 }; // shared leaderboard cache
     this.highscoreTab = 'local'; // 'local' | 'global'
+    this.highscoreTable = getWeeklyTable(); // null = all tables
     this.globalRank = null;
     this.isPersonalBest = false;
     this.unlockedThisRun = null;
@@ -294,12 +295,12 @@ class Game {
 
       if (state === STATES.MENU && this.menuView === 'practice') {
         const num = parseInt(e.key);
-        if (num >= 2 && num <= 9) this.selectedTable = num;
+        if (num >= 1 && num <= 9) this.selectedTable = num;
         if (e.key === '0') this.selectedTable = 10;
         if (e.key === '-') this.selectedTable = 11;
         if (e.key === '=') this.selectedTable = 12;
-        if (e.code === 'ArrowLeft') this.selectedTable = Math.max(this.selectedTable - 1, 2);
-        if (e.code === 'ArrowRight') this.selectedTable = Math.min(this.selectedTable + 1, 12);
+        if (e.code === 'ArrowLeft') this.selectedTable = Math.max(this.selectedTable - 1, MIN_TABLE);
+        if (e.code === 'ArrowRight') this.selectedTable = Math.min(this.selectedTable + 1, MAX_TABLE);
         if (e.code === 'ArrowUp') this.selectedSpeed = Math.min(this.selectedSpeed + 1, 99);
         if (e.code === 'ArrowDown') this.selectedSpeed = Math.max(this.selectedSpeed - 1, 1);
       }
@@ -678,6 +679,7 @@ class Game {
     }).then(result => {
       if (!result.ok) return;
       if (this.run === run && this.scoring.score === score) this.globalRank = result.rank;
+      this.highscoreTable = run.table;
       this.global = { status: 'ok', entries: result.entries, fetchedAt: performance.now() };
     });
   }
@@ -690,7 +692,9 @@ class Game {
     const stale = performance.now() - this.global.fetchedAt > 30000;
     if (this.global.status === 'loading' || (!force && !stale && this.global.status !== 'idle')) return;
     this.global = { ...this.global, status: 'loading' };
-    this.globalScores.fetchTop({ limit: 10 }).then(result => {
+    const table = this.highscoreTable;
+    this.globalScores.fetchTop({ table, limit: 10 }).then(result => {
+      if (this.highscoreTable !== table) return; // filter changed meanwhile
       this.global = result.ok
         ? { status: 'ok', entries: result.entries, fetchedAt: performance.now() }
         : { status: 'error', entries: [], fetchedAt: performance.now() };
@@ -887,9 +891,9 @@ class Game {
     const week = getISOWeek();
 
     const cardW = Math.min(540, this.canvasWidth - 40);
-    const cardH = 300;
+    const cardH = 328;
     const cardX = cx - cardW / 2;
-    const cardY = 128;
+    const cardY = 126;
     drawCard(ctx, cardX, cardY, cardW, cardH, { radius: 24 });
 
     // Header ribbon
@@ -925,6 +929,10 @@ class Game {
     ctx.fillStyle = COLORS.inkSoft;
     ctx.font = font(16, '600');
     ctx.fillText(t('weeklyHint'), cx, cardY + 218);
+    const daysLeft = daysUntilNextTable();
+    ctx.fillStyle = COLORS.secondary;
+    ctx.font = font(13, '700');
+    ctx.fillText(`⏳ ${t('newTableIn')} ${daysLeft} ${daysLeft === 1 ? t('day') : t('days')}`, cx, cardY + 238);
 
     // Play button
     const btnW = 240;
@@ -976,8 +984,9 @@ class Game {
     const gridX = cx - gridW / 2;
     const gridY = cardY + 72;
 
-    for (let i = 0; i < 11; i++) {
-      const table = i + 2;
+    const tableCount = MAX_TABLE - MIN_TABLE + 1;
+    for (let i = 0; i < tableCount; i++) {
+      const table = MIN_TABLE + i;
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = gridX + col * (cellW + gap);
@@ -1301,13 +1310,38 @@ class Game {
     });
     ctx.textBaseline = 'alphabetic';
 
+    // Table filter: ◀ 6× ▶ with "all tables" at the end of the cycle
+    const filterY = cardY + 54;
+    const options = [null];
+    for (let tbl = MIN_TABLE; tbl <= MAX_TABLE; tbl++) options.push(tbl);
+    const step = (dir) => {
+      const i = options.indexOf(this.highscoreTable);
+      this.highscoreTable = options[(i + dir + options.length) % options.length];
+      this.global = { status: 'idle', entries: [], fetchedAt: 0 };
+    };
+    const arrowW = 34;
+    const arrowH = 28;
+    const left = drawButton(ctx, cx - 120, filterY, arrowW, arrowH, '◀', { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 14 });
+    this.hitAreas.add(left, () => step(-1));
+    const right = drawButton(ctx, cx + 120 - arrowW, filterY, arrowW, arrowH, '▶', { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 14 });
+    this.hitAreas.add(right, () => step(1));
+    ctx.fillStyle = COLORS.ink;
+    ctx.font = font(15, '700');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const weekly = getWeeklyTable();
+    const filterLabel = this.highscoreTable === null ? t('allTables')
+      : `${this.highscoreTable}×${this.highscoreTable === weekly ? `  (${t('thisWeek')})` : ''}`;
+    ctx.fillText(filterLabel, cx, filterY + arrowH / 2);
+    ctx.textBaseline = 'alphabetic';
+
     const isGlobal = this.highscoreTab === 'global';
     if (isGlobal) this.refreshGlobal();
     const entries = isGlobal
       ? this.global.entries.map(e => ({ ...e, maxSpeed: e.speed }))
-      : this.highscores.list();
-    const rowH = 33;
-    const listY = cardY + 64;
+      : this.highscores.listForTable(this.highscoreTable);
+    const rowH = 31;
+    const listY = cardY + 96;
 
     if (entries.length === 0) {
       ctx.fillStyle = COLORS.inkSoft;

@@ -30,6 +30,12 @@ export function createHighscores(storage = window.localStorage) {
       return entries.map(e => ({ ...e }));
     },
 
+    // Entries for one table (null = every table), best first
+    listForTable(table) {
+      const all = entries.map(e => ({ ...e }));
+      return table === null || table === undefined ? all : all.filter(e => e.table === table);
+    },
+
     // Highest local score recorded under this name (case-insensitive), 0 if none
     bestScoreFor(name) {
       const key = String(name || '').toLowerCase();

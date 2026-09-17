@@ -9,7 +9,7 @@ describe('Progress', () => {
   });
 
   test('all tables start at speed 0 (not mastered)', () => {
-    for (let table = 2; table <= 12; table++) {
+    for (let table = 1; table <= 12; table++) {
       expect(progress.getBestSpeed(table)).toBe(0);
     }
   });
