@@ -19,6 +19,7 @@ import { createUnlocks } from './unlocks.js';
 import { createCharacterVoices } from './voices.js';
 import { createConfetti } from './confetti.js';
 import { getTableMascot } from './mascots.js';
+import { createWeatherClient } from './weather.js';
 import { createGlobalScores } from './globalScores.js';
 import { getDailyTable, formatTimeUntilNextDay } from './weekly.js';
 import { createRun, MODES } from './run.js';
@@ -59,6 +60,10 @@ class Game {
     this.unlocks = createUnlocks({ starterIds: this.starterIds, allIds: this.allAvatarIds });
     this.toast = null;          // { avatarId, title, until }
     this.confetti = createConfetti();
+    this.weather = null;
+    this.weatherClient = createWeatherClient({ override: new URLSearchParams(window.location.search).get('weather') });
+    this.locationChoice = this.readLocationChoice(); // 'granted' | 'denied' | null
+    this.showLocationCard = false;
     this.globalScores = createGlobalScores();
     this.global = { status: 'idle', entries: [], fetchedAt: 0 }; // shared leaderboard cache
     this.highscoreTab = 'local'; // 'local' | 'global'
@@ -109,6 +114,9 @@ class Game {
     this.gameLoop = this.gameLoop.bind(this);
 
     this.preloadAllVoiceAudio();
+    this.refreshWeather();
+    setInterval(() => this.refreshWeather(), 10 * 60 * 1000);
+    if (this.locationChoice === 'granted') this.requestPosition();
 
     if (document.fonts && document.fonts.load) {
       document.fonts.load("700 20px 'Fredoka'").catch(() => {});
@@ -223,6 +231,98 @@ class Game {
       this.state.openProfile();
       this.profileUI.show({ allowBack: false });
     }
+  }
+
+  // Real weather where the player is shapes the sky, clouds, rain/snow and wind.
+  // Without browser coordinates the server geolocates by IP, falling back to Mölndal.
+  refreshWeather() {
+    this.weatherClient.fetch(this.coords || null).then(w => {
+      this.weather = w;
+      this.background.setWeather(w);
+      console.info(`[weather] applied: ${w.condition}${w.isDay ? '' : ' (night)'} in ${w.place}, ${w.temperature ?? '?'}°, wind ${w.windSpeed} km/h`);
+    });
+  }
+
+  readLocationChoice() {
+    try { return localStorage.getItem('flappy-math-location'); } catch (e) { return null; }
+  }
+
+  saveLocationChoice(choice) {
+    this.locationChoice = choice;
+    try { localStorage.setItem('flappy-math-location', choice); } catch (e) { /* ignore */ }
+  }
+
+  // Ask the browser for a position (the browser shows its own permission prompt).
+  // Only called after the player said yes on our explanation card.
+  requestPosition() {
+    if (!navigator.geolocation) { console.warn('[weather] geolocation not available in this browser'); return; }
+    console.info('[weather] asking the browser for the position…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        this.coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        console.info(`[weather] position received (±${Math.round(pos.coords.accuracy)} m); refreshing weather with rounded coordinates`);
+        this.refreshWeather();
+      },
+      (err) => { console.warn(`[weather] position not available (${err && err.message}); keeping the server-decided weather`); },
+      { timeout: 8000, maximumAge: 10 * 60 * 1000 }
+    );
+  }
+
+  renderLocationCard() {
+    const ctx = this.ctx;
+    const W = this.canvasWidth;
+    const cx = W / 2;
+    ctx.fillStyle = 'rgba(31, 42, 68, 0.45)';
+    ctx.fillRect(0, 0, W, this.canvasHeight);
+    const cardW = Math.min(520, W - 40);
+    const cardH = 250;
+    const cardX = cx - cardW / 2;
+    const cardY = this.canvasHeight / 2 - cardH / 2;
+    drawCard(ctx, cardX, cardY, cardW, cardH, { radius: 24 });
+    ctx.textAlign = 'center';
+    ctx.font = emojiFont(40);
+    ctx.fillText('📍', cx, cardY + 56);
+    ctx.fillStyle = COLORS.ink;
+    ctx.font = font(24, '700');
+    ctx.fillText(t('locationTitle'), cx, cardY + 96);
+    ctx.fillStyle = COLORS.inkSoft;
+    ctx.font = font(14, '600');
+    ctx.fillText(t('locationBody1'), cx, cardY + 126);
+    ctx.fillText(t('locationBody2'), cx, cardY + 148);
+    const btnY = cardY + cardH - 52 - 18;
+    const yes = drawButton(ctx, cx - 240, btnY, 230, 52, t('locationYes'), { fontSize: 17, icon: '✅' });
+    this.hitAreas.add(yes, () => { this.showLocationCard = false; this.saveLocationChoice('granted'); this.requestPosition(); });
+    const no = drawButton(ctx, cx + 10, btnY, 230, 52, t('locationNo'),
+      { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 17 });
+    this.hitAreas.add(no, () => { this.showLocationCard = false; this.saveLocationChoice('denied'); console.info('[weather] location declined; using IP/Mölndal weather'); });
+    // Swallow clicks on the rest of the screen while the card is up
+    this.hitAreas.add({ x: 0, y: 0, width: W, height: this.canvasHeight }, () => {});
+    // Re-add the buttons on top so they win the hit test
+    this.hitAreas.add(yes, () => { this.showLocationCard = false; this.saveLocationChoice('granted'); this.requestPosition(); });
+    this.hitAreas.add(no, () => { this.showLocationCard = false; this.saveLocationChoice('denied'); });
+  }
+
+  weatherIcon(w) {
+    if (!w.isDay && w.condition === 'clear') return '🌙';
+    return { clear: '☀️', clouds: '⛅', overcast: '☁️', fog: '🌫️', rain: '🌧️', snow: '❄️', thunder: '⛈️' }[w.condition] || '☀️';
+  }
+
+  renderWeatherChip() {
+    const w = this.weather;
+    if (!w) return;
+    const ctx = this.ctx;
+    const label = `${this.weatherIcon(w)} ${t('weatherIn')} ${w.place}: ${t(`weather_${w.condition}`)}${w.temperature !== null ? `, ${w.temperature}°` : ''}`;
+    ctx.font = font(13, '600');
+    const wdt = Math.ceil(ctx.measureText(label).width) + 24;
+    const x = this.canvasWidth - 16 - wdt;
+    const y = 66;
+    drawCard(ctx, x, y, wdt, 26, { radius: 13, shadow: false, fill: 'rgba(255,255,255,0.85)' });
+    ctx.fillStyle = COLORS.ink;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 12, y + 13);
+    ctx.textBaseline = 'alphabetic';
+    this.hitAreas.add({ x, y, width: wdt, height: 26 }, () => { this.showLocationCard = true; });
   }
 
   showToast(avatarId, title, { selectable = true } = {}) {
@@ -855,6 +955,7 @@ class Game {
     const cx = W / 2;
 
     this.renderTopBar();
+    this.renderWeatherChip();
 
     drawTitle(ctx, t('title'), cx, 78, 54);
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -879,6 +980,14 @@ class Game {
     } else {
       this.renderDailyPanel(cx);
     }
+
+    // First time only: explain why we'd like the location before the browser asks
+    const canAsk = this.state.current() === STATES.MENU && this.profile.hasName() && !this.profileUI.isVisible();
+    if (canAsk && this.locationChoice === null && navigator.geolocation && !this.showLocationCard && !this.locationCardShownOnce) {
+      this.locationCardShownOnce = true;
+      this.showLocationCard = true;
+    }
+    if (this.showLocationCard && canAsk) this.renderLocationCard();
   }
 
   renderBenchResults() {

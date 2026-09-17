@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createEmptyStore, parseStore, validateEntry, insertEntry, topEntries } from './scores.js';
 import { createRateLimiter } from './rateLimit.js';
+import { createWeatherService } from './weather.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -51,6 +52,7 @@ const PUBLIC_DIRS = ['js', 'css', 'sounds'];
 const PUBLIC_FILES = ['index.html', 'favicon.ico', 'robots.txt'];
 
 const submitLimiter = createRateLimiter({ limit: 20, windowMs: 60 * 1000 });
+const weather = createWeatherService();
 
 let store = createEmptyStore();
 let writeQueue = Promise.resolve();
@@ -263,6 +265,18 @@ export function createRequestHandler() {
 
     if (url.pathname === '/api/health') {
       return sendJson(res, 200, { ok: true, persistence: persistenceEnabled });
+    }
+
+    if (url.pathname === '/api/weather') {
+      if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }); return res.end(); }
+      // Location: browser coordinates if sent, otherwise the client's IP, otherwise Mölndal
+      const report = await weather.get({
+        lat: url.searchParams.get('lat'),
+        lon: url.searchParams.get('lon'),
+        ip: clientIp(req)
+      });
+      console.log(`[weather] ${url.searchParams.has('lat') ? 'coords' : `ip ${clientIp(req)}`} → ${report.place}: ${report.condition} ${report.temperature}° wind ${report.windSpeed}${report.stale ? ' (stale)' : ''}`);
+      return sendJson(res, 200, report, { 'Cache-Control': 'private, max-age=120' });
     }
 
     if (url.pathname === '/api/scores') {
