@@ -3,7 +3,7 @@ import { HITS_PER_SPEED_LEVEL } from './constants.js';
 // A single play session: which table, how fast, and how the mode reacts to answers.
 
 export const MODES = {
-  WEEKLY: 'weekly',     // Table from week number, speed ramps per correct answer
+  DAILY: 'daily',       // Table of the day, speed ramps per correct answers
   PRACTICE: 'practice'  // Player picks table and speed, ends on mastery
 };
 
@@ -16,7 +16,7 @@ export function createRun({ mode, table, speed = 1 }) {
     hitsTowardNextLevel: 0,
 
     onCorrect() {
-      if (this.mode === MODES.WEEKLY) {
+      if (this.mode === MODES.DAILY) {
         this.hitsTowardNextLevel++;
         if (this.hitsTowardNextLevel >= HITS_PER_SPEED_LEVEL) {
           this.hitsTowardNextLevel = 0;
@@ -35,7 +35,7 @@ export function createRun({ mode, table, speed = 1 }) {
     },
 
     countsForHighscore() {
-      return this.mode === MODES.WEEKLY;
+      return this.mode === MODES.DAILY;
     }
   };
 }

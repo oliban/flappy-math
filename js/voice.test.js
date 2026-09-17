@@ -10,7 +10,7 @@ function mockWebAudio() {
     resume: vi.fn(() => Promise.resolve()),
     decodeAudioData: vi.fn((buf) => Promise.resolve({ duration: 0.5, name: buf.name })),
     createBufferSource: vi.fn(() => {
-      const src = { buffer: null, connect: vi.fn(), start: vi.fn((when) => started.push({ name: src.buffer.name, when })), onended: null };
+      const src = { buffer: null, connect: vi.fn(), start: vi.fn((when) => started.push({ name: src.buffer.name, when, src })), onended: null };
       return src;
     })
   };
@@ -80,6 +80,7 @@ describe('Voice Player', () => {
     test('a clip is fetched and decoded only once even when spoken repeatedly', async () => {
       const p = make();
       p.speakAnswer(84); await flush();
+      wa.started[0].src.onended();          // first playback ends
       p.speakAnswer(84); await flush();
       expect(wa.fetched.filter(u => u.endsWith('en_num_84.mp3')).length).toBe(1);
       expect(wa.started.filter(s => s.name.endsWith('en_num_84.mp3')).length).toBe(2);
@@ -119,6 +120,50 @@ describe('Voice Player', () => {
         'sounds/numbers/en/en_times.mp3', 'sounds/numbers/en/en_num_1.mp3', 'sounds/numbers/en/en_num_12.mp3'
       ]));
       expect(wa.fetched.length).toBe(5);
+    });
+  });
+
+  describe('no overlapping speech', () => {
+    test('a new question waits until the current one has finished playing', async () => {
+      const p = make();
+      p.speakQuestion(2, 3);
+      await flush();
+      expect(wa.started.length).toBe(3);           // 2, times, 3 are sounding
+      p.speakQuestion(4, 5);
+      await flush();
+      expect(wa.started.length).toBe(3);           // nothing new started yet
+      wa.started[2].src.onended();                 // last clip of the first question ends
+      await flush();
+      expect(wa.started.map(s => s.name).slice(3)).toEqual([
+        'sounds/numbers/en/en_num_4.mp3', 'sounds/numbers/en/en_times.mp3', 'sounds/numbers/en/en_num_5.mp3'
+      ]);
+    });
+
+    test('only the latest request made during playback is spoken afterwards', async () => {
+      const p = make();
+      p.speakAnswer(7);
+      await flush();
+      expect(wa.started.length).toBe(1);
+      p.speakQuestion(2, 3);
+      p.speakQuestion(8, 9);
+      await flush();
+      wa.started[0].src.onended();
+      await flush();
+      const names = wa.started.map(s => s.name);
+      expect(names).not.toContain('sounds/numbers/en/en_num_2.mp3');
+      expect(names).toContain('sounds/numbers/en/en_num_8.mp3');
+      expect(names).toContain('sounds/numbers/en/en_num_9.mp3');
+    });
+
+    test('isSpeaking reflects playback state', async () => {
+      const p = make();
+      expect(p.isSpeaking()).toBe(false);
+      p.speakAnswer(7);
+      await flush();
+      expect(p.isSpeaking()).toBe(true);
+      wa.started[0].src.onended();
+      await flush();
+      expect(p.isSpeaking()).toBe(false);
     });
   });
 

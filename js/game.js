@@ -19,7 +19,7 @@ import { createUnlocks } from './unlocks.js';
 import { createCharacterVoices } from './voices.js';
 import { createConfetti } from './confetti.js';
 import { createGlobalScores } from './globalScores.js';
-import { getISOWeek, getWeeklyTable, daysUntilNextTable } from './weekly.js';
+import { getDailyTable, formatTimeUntilNextDay } from './weekly.js';
 import { createRun, MODES } from './run.js';
 import { createBackground } from './background.js';
 import { createProfileUI } from './profile-ui.js';
@@ -61,7 +61,8 @@ class Game {
     this.globalScores = createGlobalScores();
     this.global = { status: 'idle', entries: [], fetchedAt: 0 }; // shared leaderboard cache
     this.highscoreTab = 'local'; // 'local' | 'global'
-    this.highscoreTable = getWeeklyTable(); // null = all tables
+    this.highscoreTable = getDailyTable(); // null = all tables
+    this.dailyTable = getDailyTable();
     this.globalRank = null;
     this.isPersonalBest = false;
     this.unlockedThisRun = null;
@@ -78,7 +79,7 @@ class Game {
     this.hasFlapped = false;
 
     // Menu state
-    this.menuView = 'weekly'; // 'weekly' | 'practice'
+    this.menuView = 'daily'; // 'daily' | 'practice'
     this.selectedTable = 2;
     this.selectedSpeed = 1;
 
@@ -288,7 +289,7 @@ class Game {
         if (state !== STATES.MENU) {
           this.state.returnToMenu();
         } else if (this.menuView === 'practice') {
-          this.menuView = 'weekly';
+          this.menuView = 'daily';
         }
         return;
       }
@@ -345,7 +346,7 @@ class Game {
     const state = this.state.current();
     if (state === STATES.MENU) {
       if (this.menuView === 'practice') this.startPractice();
-      else this.startWeekly();
+      else this.startDaily();
     } else if (state === STATES.PLAYING) {
       this.flap();
     } else if (state === STATES.GAME_OVER) {
@@ -372,8 +373,8 @@ class Game {
 
   // ---------- Game flow ----------
 
-  startWeekly() {
-    this.run = createRun({ mode: MODES.WEEKLY, table: getWeeklyTable() });
+  startDaily() {
+    this.run = createRun({ mode: MODES.DAILY, table: getDailyTable() });
     this.startGame();
   }
 
@@ -457,6 +458,12 @@ class Game {
     this.worstGap = Math.max(this.worstGap || 0, gap);
     if (gap > 34) this.longFrames = (this.longFrames || 0) + 1;
     if (timestamp - this.fpsLastTime >= 1000) {
+      // Midnight rollover: the table of the day changes without a reload
+      const todayTable = getDailyTable();
+      if (todayTable !== this.dailyTable) {
+        if (this.highscoreTable === this.dailyTable) this.highscoreTable = todayTable;
+        this.dailyTable = todayTable;
+      }
       this.currentFPS = this.frameCount;
       this.shownWorstGap = Math.round(this.worstGap);
       this.shownLongFrames = this.longFrames || 0;
@@ -664,7 +671,7 @@ class Game {
     this.confetti.burst({ x: this.canvasWidth / 2, y: 120, count: 50, angle: -Math.PI / 2, spread: Math.PI * 1.6, speed: cannonSpeed * 0.55 });
   }
 
-  // Offer the finished weekly run to the shared leaderboard (fails silently offline)
+  // Offer the finished daily run to the shared leaderboard (fails silently offline)
   submitToGlobal() {
     if (!this.globalScores.isAvailable() || this.scoring.score <= 0) return;
     const run = this.run;
@@ -836,7 +843,7 @@ class Game {
     } else if (this.menuView === 'practice') {
       this.renderPracticePanel(cx);
     } else {
-      this.renderWeeklyPanel(cx);
+      this.renderDailyPanel(cx);
     }
   }
 
@@ -885,10 +892,11 @@ class Game {
     this.hitAreas.add(btn, () => { this.benchResults = null; });
   }
 
-  renderWeeklyPanel(cx) {
+  renderDailyPanel(cx) {
     const ctx = this.ctx;
-    const table = getWeeklyTable();
-    const week = getISOWeek();
+    const table = getDailyTable();
+    const today = new Date();
+    const dateLabel = today.toLocaleDateString(getLanguage() === 'sv' ? 'sv-SE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
     const cardW = Math.min(540, this.canvasWidth - 40);
     const cardH = 328;
@@ -905,7 +913,7 @@ class Game {
     ctx.fillStyle = '#FFF';
     ctx.textAlign = 'center';
     ctx.font = font(22, '700');
-    ctx.fillText(`${t('weeklyChallenge')}  •  ${t('weekLabel')} ${week}`, cx, cardY + 35);
+    ctx.fillText(`${t('dailyChallenge')}  •  ${dateLabel}`, cx, cardY + 35);
 
     // Big table badge
     ctx.fillStyle = COLORS.gold;
@@ -929,17 +937,16 @@ class Game {
     ctx.fillStyle = COLORS.inkSoft;
     ctx.font = font(16, '600');
     ctx.fillText(t('weeklyHint'), cx, cardY + 218);
-    const daysLeft = daysUntilNextTable();
     ctx.fillStyle = COLORS.secondary;
     ctx.font = font(13, '700');
-    ctx.fillText(`⏳ ${t('newTableIn')} ${daysLeft} ${daysLeft === 1 ? t('day') : t('days')}`, cx, cardY + 238);
+    ctx.fillText(`⏳ ${t('newTableIn')} ${formatTimeUntilNextDay()}`, cx, cardY + 238);
 
     // Play button
     const btnW = 240;
     const btnH = 58;
     const rect = drawButton(ctx, cx - btnW / 2, cardY + cardH - btnH - 20, btnW, btnH,
       `▶  ${t('play')}`, { fontSize: 26 });
-    this.hitAreas.add(rect, () => this.startWeekly());
+    this.hitAreas.add(rect, () => this.startDaily());
 
     // Secondary buttons
     const secY = cardY + cardH + 22;
@@ -1043,7 +1050,7 @@ class Game {
     this.hitAreas.add(start, () => this.startPractice());
     const back = drawButton(ctx, cx - 40 - 16 - 130, btnY, 130, 58, t('back'),
       { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 20 });
-    this.hitAreas.add(back, () => { this.menuView = 'weekly'; });
+    this.hitAreas.add(back, () => { this.menuView = 'daily'; });
   }
 
   renderGame() {
@@ -1080,15 +1087,15 @@ class Game {
       this.blitPanel(pill, Math.round(W / 2 - pillW / 2), 14);
     }
 
-    const isWeekly = this.run.mode === MODES.WEEKLY;
+    const isDaily = this.run.mode === MODES.DAILY;
 
     // Left HUD: player + score (avatar drawn live on top for its idle animation)
     const hudX = 14;
     const hudY = 14;
     const hudW = 190;
     const hudH = 84;
-    const mainValue = isWeekly ? String(this.scoring.score) : `${this.scoring.streak}/10`;
-    const leftKey = `${this.profile.getName()}|${isWeekly}|${mainValue}|${getLanguage()}`;
+    const mainValue = isDaily ? String(this.scoring.score) : `${this.scoring.streak}/10`;
+    const leftKey = `${this.profile.getName()}|${isDaily}|${mainValue}|${getLanguage()}`;
     const left = this.cachedPanel('hudLeft', leftKey, hudW, hudH, (c) => {
       c.fillStyle = 'rgba(31, 42, 68, 0.75)';
       roundRect(c, 0, 0, hudW, hudH, 18);
@@ -1100,7 +1107,7 @@ class Game {
       c.fillText(this.profile.getName(), 58, 26);
       c.fillStyle = 'rgba(255,255,255,0.7)';
       c.font = font(13, '600');
-      c.fillText(isWeekly ? t('score') : t('streak'), 12, 58);
+      c.fillText(isDaily ? t('score') : t('streak'), 12, 58);
       c.fillStyle = COLORS.gold;
       c.font = font(26, '700');
       c.fillText(mainValue, 72, 58);
@@ -1113,7 +1120,7 @@ class Game {
     const rX = W - rW - 14;
     const rY = 14;
     const rH = 84;
-    const rightKey = `${this.run.table}|${this.run.speed}|${this.scoring.lives}|${isWeekly}|${getLanguage()}`;
+    const rightKey = `${this.run.table}|${this.run.speed}|${this.scoring.lives}|${isDaily}|${getLanguage()}`;
     const right = this.cachedPanel('hudRight', rightKey, rW, rH, (c) => {
       c.fillStyle = 'rgba(31, 42, 68, 0.75)';
       roundRect(c, 0, 0, rW, rH, 18);
@@ -1128,7 +1135,7 @@ class Game {
       c.fillStyle = '#FFF';
       c.font = font(17, '700');
       c.fillText(`${this.run.table}×`, rW - 14, 22);
-      c.fillStyle = isWeekly ? COLORS.gold : '#FFF';
+      c.fillStyle = isDaily ? COLORS.gold : '#FFF';
       c.fillText(String(this.run.speed), rW - 14, 44);
       for (let i = 0; i < 3; i++) {
         const filled = i < this.scoring.lives;
@@ -1257,7 +1264,7 @@ class Game {
     const again = drawButton(ctx, bx, btnY, wPlay, btnH, t('playAgain'), { fontSize: 21, icon: '🔁' });
     this.hitAreas.add(again, () => {
       this.state.returnToMenu();
-      if (this.run.mode === MODES.WEEKLY) this.startWeekly();
+      if (this.run.mode === MODES.DAILY) this.startDaily();
       else this.startPractice();
     });
     bx += wPlay + 10;
@@ -1329,9 +1336,9 @@ class Game {
     ctx.font = font(15, '700');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const weekly = getWeeklyTable();
+    const todayTable = getDailyTable();
     const filterLabel = this.highscoreTable === null ? t('allTables')
-      : `${this.highscoreTable}×${this.highscoreTable === weekly ? `  (${t('thisWeek')})` : ''}`;
+      : `${this.highscoreTable}×${this.highscoreTable === todayTable ? `  (${t('todayShort')})` : ''}`;
     ctx.fillText(filterLabel, cx, filterY + arrowH / 2);
     ctx.textBaseline = 'alphabetic';
 

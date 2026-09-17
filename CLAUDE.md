@@ -23,7 +23,7 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/state.js` - Game state machine (menu / profile / highscores → playing → gameOver)
 - `js/run.js` - A play session: mode (weekly or practice), table, speed ramp
 - `js/pace.js` - Speed level → seconds for a pipe to cross the screen (resolution independent)
-- `js/weekly.js` - ISO week number → table 2-12 for the weekly challenge
+- `js/weekly.js` - Table of the day + ISO week helpers (weekly character drop)
 - `js/player.js` - Player name + avatar, persisted to LocalStorage
 - `js/avatars.js` - Vector-drawn characters (parametric roster), `drawAvatar(ctx, id, r, phase)`
 - `js/avatar-sprites.js` - Sprite-sheet cache so a character costs one drawImage per frame
@@ -45,7 +45,7 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/storage.js` - LocalStorage persistence
 
 **Modes:**
-- Weekly Challenge (default): table = ISO week number mapped onto 2-12, speed starts at 1 and rises one level every `HITS_PER_SPEED_LEVEL` correct answers, run ends when lives are gone, score goes to the local highscore list
+- Daily Challenge (default): table of the day from the local calendar date (2-12, never the same two days in a row, `js/weekly.js#getDailyTable`), speed starts at 1 and rises one level every `HITS_PER_SPEED_LEVEL` correct answers, run ends when lives are gone, score goes to the local and global highscore lists. Character drops are still weekly.
 - Practice: player picks table 2×-12× and speed level; mastery = 10 correct in a row, best speed per table saved to LocalStorage
 
 **Pace:** never define motion in px/frame. The canvas is 600 units tall and as wide as the viewport aspect demands (a landscape phone is ~1800 wide), so px/frame speeds crawl on phones. Use `pace.js` (screen-relative) and the fixed 60 Hz step in `game.js`.

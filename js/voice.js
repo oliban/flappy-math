@@ -9,8 +9,15 @@ export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fe
 
   let enabled = true;
   let currentLang = 'en';
-  let sequenceId = 0;             // newer speech cancels older pending speech
   const elementCache = new Map(); // fallback <audio> elements
+
+  // Speech never overlaps: one sequence sounds at a time. A request that
+  // arrives while a sequence is still LOADING replaces it (no point saying a
+  // stale question); one that arrives while a sequence is PLAYING waits and
+  // only the latest waiting request is spoken afterwards.
+  let phase = 'idle';   // 'idle' | 'loading' | 'playing'
+  let loadId = 0;       // bumped to drop a superseded loading sequence
+  let pending = null;   // paths waiting for the current playback to end
 
   function getAudioPath(type, value) {
     const prefix = currentLang === 'sv' ? 'sv' : 'en';
@@ -19,18 +26,35 @@ export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fe
     return null;
   }
 
-  // --- Web Audio path: decode once, schedule clips back to back (gapless) ---
-  function playSequenceWebAudio(paths) {
-    const id = ++sequenceId;
+  function finished() {
+    phase = 'idle';
+    if (pending) {
+      const next = pending;
+      pending = null;
+      startSequence(next);
+    }
+  }
+
+  // --- Web Audio: decode once, schedule clips back to back (gapless) ---
+  function runWebAudio(paths) {
+    const id = ++loadId;
     engine.resume();
     Promise.all(paths.map(p => engine.load(p))).then(buffers => {
-      if (id !== sequenceId) return; // superseded by a newer question
+      if (id !== loadId) return; // superseded while loading; the newer one owns the phase
+      const clips = buffers.filter(Boolean);
+      if (clips.length === 0) { finished(); return; }
+      phase = 'playing';
       let when = engine.now();
-      for (const buffer of buffers) {
-        if (!buffer) continue;
-        engine.play(buffer, when);
+      let last = null;
+      for (const buffer of clips) {
+        last = engine.play(buffer, when);
         when += buffer.duration;
       }
+      let done = false;
+      const end = () => { if (!done) { done = true; finished(); } };
+      if (last) last.onended = end;
+      // Safety net in case 'ended' never fires (context suspended by the OS, etc.)
+      setTimeout(end, Math.ceil((when - engine.now()) * 1000) + 500);
     });
   }
 
@@ -44,10 +68,11 @@ export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fe
     return elementCache.get(path);
   }
 
-  function playSequenceElements(paths) {
+  function runElements(paths) {
+    phase = 'playing';
     let index = 0;
     const playNext = () => {
-      if (index >= paths.length) return;
+      if (index >= paths.length) { finished(); return; }
       const clone = getElement(paths[index]).cloneNode();
       index++;
       clone.onended = playNext;
@@ -57,10 +82,19 @@ export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fe
     playNext();
   }
 
+  function startSequence(paths) {
+    if (engine.isAvailable()) {
+      phase = 'loading';
+      runWebAudio(paths);
+    } else if (_Audio) {
+      runElements(paths);
+    }
+  }
+
   function playSequence(paths) {
     if (paths.length === 0) return;
-    if (engine.isAvailable()) playSequenceWebAudio(paths);
-    else if (_Audio) playSequenceElements(paths);
+    if (phase === 'playing') { pending = paths; return; }
+    startSequence(paths); // idle, or loading (the newer request supersedes the loading one)
   }
 
   return {
@@ -99,6 +133,10 @@ export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fe
       const paths = [getAudioPath('times'), ...numbers.map(n => getAudioPath('number', n))];
       if (engine.isAvailable()) engine.loadAll(paths, 3);
       else paths.forEach(getElement);
+    },
+
+    isSpeaking() {
+      return phase === 'playing';
     },
 
     isAvailable() {

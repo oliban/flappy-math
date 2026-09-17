@@ -27,7 +27,7 @@ export async function runBenchmark(game) {
   };
 
   // Start a run so there are pipes and a bird to draw, but freeze game logic
-  game.startWeekly();
+  game.startDaily();
   game.update = () => {};
   game.benchRunning = true;
 

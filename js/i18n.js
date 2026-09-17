@@ -5,8 +5,8 @@ const translations = {
     // Menu
     title: 'Flappy Math',
     subtitle: 'Master your times tables!',
-    weeklyChallenge: 'Weekly Challenge',
-    weekLabel: 'Week',
+    dailyChallenge: 'Daily Challenge',
+    todayLabel: 'Today',
     weeklyHint: 'Speed rises every 3 correct answers',
     play: 'Play',
     practice: 'Practice',
@@ -33,7 +33,7 @@ const translations = {
 
     // Global leaderboard
     allTables: 'All tables',
-    thisWeek: 'this week',
+    todayShort: 'today',
     newTableIn: 'New table in',
     days: 'days',
     day: 'day',
@@ -102,9 +102,9 @@ const translations = {
     // Menu
     title: 'Flappy Matte',
     subtitle: 'Bli mästare på multiplikation!',
-    weeklyChallenge: 'Veckans utmaning',
-    weekLabel: 'Vecka',
-    weeklyHint: 'Farten ökar var tredje rätta svar',
+    dailyChallenge: 'Dagens utmaning',
+    todayLabel: 'Idag',
+    weeklyHint: 'Farten ökar var tredje rätt svar',
     play: 'Spela',
     practice: 'Träna',
     practiceHint: 'Välj tabell och hastighet',
@@ -130,7 +130,7 @@ const translations = {
 
     // Global leaderboard
     allTables: 'Alla tabeller',
-    thisWeek: 'denna vecka',
+    todayShort: 'idag',
     newTableIn: 'Ny tabell om',
     days: 'dagar',
     day: 'dag',
