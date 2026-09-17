@@ -1,0 +1,14 @@
+{
+  "name": "Flappy Matte",
+  "short_name": "Flappy Matte",
+  "description": "Öva multiplikation genom att flyga genom rätt svar.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#5DB7F5",
+  "theme_color": "#5DB7F5",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

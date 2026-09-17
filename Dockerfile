@@ -4,7 +4,7 @@ WORKDIR /app
 
 # No runtime dependencies - the server uses only the Node standard library.
 COPY package.json ./
-COPY index.html ./
+COPY index.html site.webmanifest og-image.png icon-512.png apple-touch-icon.png favicon.png robots.txt ./
 COPY css ./css
 COPY js ./js
 COPY sounds ./sounds

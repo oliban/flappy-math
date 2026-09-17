@@ -213,3 +213,21 @@ describe('static files', () => {
     expect(response.status).toBe(404);
   });
 });
+
+describe('social preview assets', () => {
+  test('serves the Open Graph image and icons as PNG', async () => {
+    for (const file of ['og-image.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png']) {
+      const response = await fetch(`${baseUrl}/${file}`);
+      expect(response.status, file).toBe(200);
+      expect(response.headers.get('content-type'), file).toBe('image/png');
+    }
+  });
+
+  test('the page carries Open Graph and Twitter card tags', async () => {
+    const html = await (await fetch(`${baseUrl}/`)).text();
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain('property="og:image"');
+    expect(html).toContain('name="twitter:card"');
+    expect(html).toContain('og-image.png');
+  });
+});

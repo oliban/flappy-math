@@ -43,13 +43,14 @@ const MIME_TYPES = {
   '.ogg': 'audio/ogg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8'
+  '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8'
 };
 
 // Directories that may be served. Everything else (server code, node_modules,
 // dotfiles, tests) stays private.
 const PUBLIC_DIRS = ['js', 'css', 'sounds'];
-const PUBLIC_FILES = ['index.html', 'favicon.ico', 'robots.txt'];
+const PUBLIC_FILES = ['index.html', 'favicon.ico', 'favicon.png', 'robots.txt', 'og-image.png', 'icon-512.png', 'apple-touch-icon.png', 'site.webmanifest'];
 
 const submitLimiter = createRateLimiter({ limit: 20, windowMs: 60 * 1000 });
 const weather = createWeatherService();
@@ -207,6 +208,7 @@ async function handlePostScore(req, res) {
 
 function cacheControlFor(ext) {
   if (ext === '.mp3' || ext === '.wav' || ext === '.ogg') return 'public, max-age=604800, immutable';
+  if (ext === '.png') return 'public, max-age=86400';
   if (ext === '.css' || ext === '.js' || ext === '.mjs') return 'public, max-age=86400';
   return 'no-cache';
 }
