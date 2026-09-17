@@ -17,6 +17,15 @@ const translations = {
     streak: 'Streak',
     lives: 'Lives',
 
+    // Daily table
+    tableOfTheDay: 'Table of the day',
+    everyonePlaysToday: 'Everyone plays the same table today',
+    newTableIn: 'New table in',
+    practice: 'Practice',
+    practiceAnyTable: 'Practice any table',
+    todaysTable: "Today's table",
+    todayShort: 'today',
+
     // Highscores
     highscores: 'Highscores',
     localTab: 'My Best',
@@ -80,6 +89,15 @@ const translations = {
     speed: 'Hastighet',
     streak: 'Svit',
     lives: 'Liv',
+
+    // Daily table
+    tableOfTheDay: 'Dagens tabell',
+    everyonePlaysToday: 'Alla spelar samma tabell idag',
+    newTableIn: 'Ny tabell om',
+    practice: 'Träna',
+    practiceAnyTable: 'Träna valfri tabell',
+    todaysTable: 'Dagens tabell',
+    todayShort: 'idag',
 
     // Highscores
     highscores: 'Topplista',

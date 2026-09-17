@@ -1,4 +1,9 @@
-import { BASE_WIDTH, BASE_HEIGHT, BASE_SPEED, SPEED_INCREMENT, PIPE_SPAWN_INTERVAL, MIN_SPEED, MAX_SPEED } from './constants.js';
+import {
+  BASE_WIDTH, BASE_HEIGHT, BASE_SPEED, SPEED_INCREMENT, PIPE_SPAWN_INTERVAL,
+  MIN_SPEED, MAX_SPEED, MIN_TABLE, MAX_TABLE
+} from './constants.js';
+
+const TABLE_COUNT = MAX_TABLE - MIN_TABLE + 1;
 import { createGameState, STATES } from './state.js';
 import { createBird } from './bird.js';
 import { createPipe } from './pipe.js';
@@ -13,6 +18,7 @@ import { createGlobalScores } from './globalScores.js';
 import { createPlayer } from './player.js';
 import { drawBirdShape } from './bird.js';
 import { createConfetti } from './confetti.js';
+import { getDailyTable, getDayKey, formatTimeUntilNextTable } from './dailyTable.js';
 import { createSoundPlayer } from './sound.js';
 import { createVoicePlayer } from './voice.js';
 import { t, setLanguage, getLanguage, getAvailableLanguages, initLanguage } from './i18n.js';
@@ -46,8 +52,16 @@ class Game {
 
     this.pipes = [];
     this.currentProblem = null;
-    this.selectedTable = 2;
+
+    // The table of the day is what the game plays; practice mode is where any
+    // table can be picked.
+    this.dayKey = getDayKey();
+    this.dailyTable = getDailyTable();
+    this.menuView = 'daily'; // 'daily' | 'practice'
+    this.practiceTable = 3;
+    this.selectedTable = this.dailyTable;
     this.selectedSpeed = 1;
+    this.lastDayCheck = 0;
     this.lastPipeSpawn = 0;
     this.showMasteryMessage = false;
     this.fadeOut = 0; // 0 = no fade, increases to 1 over 2 seconds
@@ -55,7 +69,7 @@ class Game {
 
     // Highscore screen state
     this.highscoreTab = 'local'; // 'local' | 'global'
-    this.highscoreShowAllTables = false;
+    this.highscoreTable = null;  // null = all tables, otherwise 1-12
     this.globalList = { status: 'idle', entries: [], error: null };
     this.globalRequestId = 0;
 
@@ -187,6 +201,47 @@ class Game {
     };
   }
 
+  // Geometry of the daily view of the menu (today's table + start buttons).
+  getDailyLayout() {
+    const centerX = this.canvasWidth / 2;
+    const compact = this.isMobile ? 0.85 : 1;
+    const baseY = this.isMobile ? 30 : 80;
+
+    const cardWidth = 500;
+    const cardX = centerX - cardWidth / 2;
+    const cardY = baseY + 50;
+    const cardHeight = Math.round(155 * compact);
+
+    const speedCardY = cardY + cardHeight + Math.round(15 * compact);
+    const speedCardHeight = Math.round(70 * compact);
+
+    const btnY = speedCardY + speedCardHeight + Math.round(12 * compact);
+    const btnHeight = Math.round(50 * compact);
+    const btnWidth = 220;
+    const startBtnX = centerX - btnWidth - 10;
+    const highscoreBtnX = centerX + 10;
+
+    const practiceBtnWidth = Math.round(200 * compact);
+    const practiceBtnHeight = Math.round(36 * compact);
+    const practiceBtnX = centerX - practiceBtnWidth / 2;
+    const practiceBtnY = btnY + btnHeight + Math.round(12 * compact);
+
+    const skinSize = Math.round(34 * compact);
+    const skinGap = Math.round(6 * compact);
+    const skinRowWidth = SKINS.length * skinSize + (SKINS.length - 1) * skinGap;
+    const skinStartX = centerX - skinRowWidth / 2;
+    const skinY = practiceBtnY + practiceBtnHeight + Math.round(24 * compact);
+
+    return {
+      centerX, compact, baseY,
+      cardX, cardY, cardWidth, cardHeight,
+      speedCardY, speedCardHeight,
+      btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX,
+      practiceBtnX, practiceBtnY, practiceBtnWidth, practiceBtnHeight,
+      skinSize, skinGap, skinStartX, skinY
+    };
+  }
+
   // Geometry of the highscore screen, shared by rendering and hit testing.
   getHighscoreLayout() {
     const centerX = this.canvasWidth / 2;
@@ -204,9 +259,12 @@ class Game {
     const globalTabX = panelX + Math.round(panelWidth / 2) + 6;
 
     const filterY = tabY + tabHeight + Math.round(10 * compact);
-    const filterHeight = Math.round(26 * compact);
-    const filterWidth = Math.round(120 * compact);
+    const filterHeight = Math.round(28 * compact);
+    const filterWidth = Math.round(150 * compact);
     const filterX = centerX - filterWidth / 2;
+    const filterArrowWidth = Math.round(34 * compact);
+    const prevTableX = filterX - filterArrowWidth - Math.round(6 * compact);
+    const nextTableX = filterX + filterWidth + Math.round(6 * compact);
 
     const footerHeight = Math.round(42 * compact);
     const footerY = panelY + panelHeight - footerHeight - 14;
@@ -224,6 +282,7 @@ class Game {
       panelX, panelY, panelWidth, panelHeight,
       tabY, tabHeight, tabWidth, localTabX, globalTabX,
       filterX, filterY, filterWidth, filterHeight,
+      filterArrowWidth, prevTableX, nextTableX,
       rowsY, rowHeight, maxRows,
       footerY, footerHeight, backBtnX, backBtnWidth, nameBtnX, nameBtnWidth
     };
@@ -238,10 +297,12 @@ class Game {
         e.preventDefault();
         this.handleInput();
       }
-      // Escape to return to menu
+      // Escape leaves practice mode, or any screen, back to the daily menu
       if (e.code === 'Escape') {
         if (this.state.current() !== STATES.MENU) {
           this.state.returnToMenu();
+        } else if (this.menuView === 'practice') {
+          this.showDailyMenu();
         }
       }
 
@@ -254,10 +315,10 @@ class Game {
         }
       }
 
-      // Number keys 2-9 for table selection in menu
-      if (this.state.current() === STATES.MENU) {
+      // Table selection only exists in practice mode
+      if (this.state.current() === STATES.MENU && this.menuView === 'practice') {
         const num = parseInt(e.key);
-        if (num >= 2 && num <= 9) {
+        if (num >= MIN_TABLE && num <= 9) {
           this.selectedTable = num;
         }
         if (e.key === '0') this.selectedTable = 10;
@@ -266,10 +327,10 @@ class Game {
 
         // Arrow keys for table and speed
         if (e.code === 'ArrowLeft') {
-          this.selectedTable = Math.max(this.selectedTable - 1, 2);
+          this.selectedTable = Math.max(this.selectedTable - 1, MIN_TABLE);
         }
         if (e.code === 'ArrowRight') {
-          this.selectedTable = Math.min(this.selectedTable + 1, 12);
+          this.selectedTable = Math.min(this.selectedTable + 1, MAX_TABLE);
         }
         if (e.code === 'ArrowUp') {
           this.selectedSpeed = Math.min(this.selectedSpeed + 1, 99);
@@ -329,11 +390,16 @@ class Game {
         }
       }
 
+      if (this.menuView === 'daily') {
+        this.handleDailyMenuClick(x, y, centerX);
+        return;
+      }
+
       const layout = this.getMenuLayout();
       const { compact, cols, cellWidth, cellHeight, gap, gridStartX, gridStartY } = layout;
 
-      for (let i = 0; i < 11; i++) {
-        const table = i + 2;
+      for (let i = 0; i < TABLE_COUNT; i++) {
+        const table = i + MIN_TABLE;
         const col = i % cols;
         const row = Math.floor(i / cols);
         const cellX = gridStartX + col * (cellWidth + gap);
@@ -358,28 +424,17 @@ class Game {
         }
       }
 
-      // Start / highscores buttons
+      // Start / back buttons
       const { btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX } = layout;
       if (y >= btnY && y <= btnY + btnHeight) {
         if (x >= startBtnX && x <= startBtnX + btnWidth) {
+          this.practiceTable = this.selectedTable;
           this.startGame();
           return;
         }
         if (x >= highscoreBtnX && x <= highscoreBtnX + btnWidth) {
-          this.openHighscores();
+          this.showDailyMenu();
           return;
-        }
-      }
-
-      // Bird skin picker
-      const { skinSize, skinGap, skinStartX, skinY } = layout;
-      if (y >= skinY && y <= skinY + skinSize) {
-        for (let i = 0; i < SKINS.length; i++) {
-          const skinX = skinStartX + i * (skinSize + skinGap);
-          if (x >= skinX && x <= skinX + skinSize) {
-            this.selectSkin(SKINS[i].id);
-            return;
-          }
         }
       }
     } else if (this.state.current() === STATES.HIGHSCORES) {
@@ -408,6 +463,53 @@ class Game {
     }
   }
 
+  handleDailyMenuClick(x, y, centerX) {
+    const layout = this.getDailyLayout();
+    const { compact } = layout;
+
+    // Speed arrows
+    if (y >= layout.speedCardY + Math.round(35 * compact) &&
+        y <= layout.speedCardY + Math.round(65 * compact)) {
+      if (x >= centerX - 80 && x <= centerX - 40) {
+        this.selectedSpeed = Math.max(this.selectedSpeed - 1, MIN_SPEED);
+        return;
+      }
+      if (x >= centerX + 40 && x <= centerX + 80) {
+        this.selectedSpeed = Math.min(this.selectedSpeed + 1, MAX_SPEED);
+        return;
+      }
+    }
+
+    if (y >= layout.btnY && y <= layout.btnY + layout.btnHeight) {
+      if (x >= layout.startBtnX && x <= layout.startBtnX + layout.btnWidth) {
+        this.startGame();
+        return;
+      }
+      if (x >= layout.highscoreBtnX && x <= layout.highscoreBtnX + layout.btnWidth) {
+        this.openHighscores();
+        return;
+      }
+    }
+
+    if (y >= layout.practiceBtnY && y <= layout.practiceBtnY + layout.practiceBtnHeight &&
+        x >= layout.practiceBtnX && x <= layout.practiceBtnX + layout.practiceBtnWidth) {
+      this.showPracticeMenu();
+      return;
+    }
+
+    // Bird skin picker
+    const { skinSize, skinGap, skinStartX, skinY } = layout;
+    if (y >= skinY && y <= skinY + skinSize) {
+      for (let i = 0; i < SKINS.length; i++) {
+        const skinX = skinStartX + i * (skinSize + skinGap);
+        if (x >= skinX && x <= skinX + skinSize) {
+          this.selectSkin(SKINS[i].id);
+          return;
+        }
+      }
+    }
+  }
+
   hitsRect(x, y, rect) {
     return rect && x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
   }
@@ -417,6 +519,7 @@ class Game {
     const currentState = this.state.current();
 
     if (currentState === STATES.MENU) {
+      if (this.menuView === 'practice') this.practiceTable = this.selectedTable;
       this.startGame();
     } else if (currentState === STATES.HIGHSCORES) {
       this.state.returnToMenu();
@@ -517,6 +620,11 @@ class Game {
       this.currentFPS = this.frameCount;
       this.frameCount = 0;
       this.fpsLastTime = timestamp;
+    }
+
+    if (timestamp - this.lastDayCheck > 1000) {
+      this.lastDayCheck = timestamp;
+      this.refreshDailyTable();
     }
 
     this.update(deltaTime, dt, timestamp);
@@ -779,8 +887,49 @@ class Game {
     });
   }
 
+  // Rolls the table over at local midnight without needing a reload.
+  refreshDailyTable() {
+    const key = getDayKey();
+    if (key === this.dayKey) return;
+
+    this.dayKey = key;
+    this.dailyTable = getDailyTable();
+
+    if (this.menuView === 'daily') {
+      this.selectedTable = this.dailyTable;
+    }
+  }
+
+  showPracticeMenu() {
+    this.menuView = 'practice';
+    this.selectedTable = this.practiceTable;
+  }
+
+  showDailyMenu() {
+    // Remember the practice choice, but the daily view always plays today's table.
+    if (this.menuView === 'practice') {
+      this.practiceTable = this.selectedTable;
+    }
+    this.menuView = 'daily';
+    this.selectedTable = this.dailyTable;
+  }
+
   openHighscores() {
     this.state.showHighscores();
+    // Open on the table that was just played, which is today's table by default.
+    this.highscoreTable = this.selectedTable;
+    if (this.highscoreTab === 'global') this.refreshGlobal();
+  }
+
+  // Cycles through: all tables, 1x, 2x ... 12x.
+  stepHighscoreTable(direction) {
+    const options = [null];
+    for (let table = MIN_TABLE; table <= MAX_TABLE; table++) options.push(table);
+
+    const current = options.indexOf(this.highscoreTable);
+    const next = (current + direction + options.length) % options.length;
+
+    this.highscoreTable = options[next];
     if (this.highscoreTab === 'global') this.refreshGlobal();
   }
 
@@ -800,8 +949,7 @@ class Game {
     const requestId = ++this.globalRequestId;
     this.globalList = { status: 'loading', entries: [], error: null };
 
-    const table = this.highscoreShowAllTables ? null : this.selectedTable;
-    this.globalScores.fetchTop({ table, limit: 10 }).then(result => {
+    this.globalScores.fetchTop({ table: this.highscoreTable, limit: 10 }).then(result => {
       // Ignore a response that a newer request has already superseded.
       if (requestId !== this.globalRequestId) return;
 
@@ -825,11 +973,21 @@ class Game {
       }
     }
 
-    if (y >= layout.filterY && y <= layout.filterY + layout.filterHeight &&
-        x >= layout.filterX && x <= layout.filterX + layout.filterWidth) {
-      this.highscoreShowAllTables = !this.highscoreShowAllTables;
-      if (this.highscoreTab === 'global') this.refreshGlobal();
-      return;
+    if (y >= layout.filterY && y <= layout.filterY + layout.filterHeight) {
+      if (x >= layout.prevTableX && x <= layout.prevTableX + layout.filterArrowWidth) {
+        this.stepHighscoreTable(-1);
+        return;
+      }
+      if (x >= layout.nextTableX && x <= layout.nextTableX + layout.filterArrowWidth) {
+        this.stepHighscoreTable(1);
+        return;
+      }
+      // Tapping the label itself jumps back to today's table.
+      if (x >= layout.filterX && x <= layout.filterX + layout.filterWidth) {
+        this.highscoreTable = this.dailyTable;
+        if (this.highscoreTab === 'global') this.refreshGlobal();
+        return;
+      }
     }
 
     if (y >= layout.footerY && y <= layout.footerY + layout.footerHeight) {
@@ -1010,23 +1168,34 @@ class Game {
       }
     });
 
-    // Shared layout (also used for hit testing in handleClick)
-    const layout = this.getMenuLayout();
-    const { compact, baseY } = layout;
+    const compactScale = this.isMobile ? 0.85 : 1;
+    const titleY = this.isMobile ? 30 : 80;
 
     // Title with shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.font = `bold ${Math.round(56 * compact)}px system-ui`;
+    ctx.font = `bold ${Math.round(56 * compactScale)}px system-ui`;
     ctx.textAlign = 'center';
-    ctx.fillText(t('title'), centerX + 3, baseY + 3);
+    ctx.fillText(t('title'), centerX + 3, titleY + 3);
 
     ctx.fillStyle = '#2D5A1F';
-    ctx.fillText(t('title'), centerX, baseY);
+    ctx.fillText(t('title'), centerX, titleY);
 
     // Subtitle
     ctx.fillStyle = '#555';
-    ctx.font = `${Math.round(18 * compact)}px system-ui`;
-    ctx.fillText(t('subtitle'), centerX, baseY + 30);
+    ctx.font = `${Math.round(18 * compactScale)}px system-ui`;
+    ctx.fillText(
+      this.menuView === 'practice' ? t('practiceAnyTable') : t('subtitle'),
+      centerX, titleY + 30
+    );
+
+    if (this.menuView === 'daily') {
+      this.renderDailyMenu();
+      return;
+    }
+
+    // Shared layout (also used for hit testing in handleClick)
+    const layout = this.getMenuLayout();
+    const { compact } = layout;
 
     // Table selection card
     const { cardX, cardY, cardWidth, cardHeight } = layout;
@@ -1049,8 +1218,8 @@ class Game {
     // Table selection grid - centered
     const { cols, cellWidth, cellHeight, gap, gridStartX, gridStartY } = layout;
 
-    for (let i = 0; i < 11; i++) {
-      const table = i + 2;
+    for (let i = 0; i < TABLE_COUNT; i++) {
+      const table = i + MIN_TABLE;
       const col = i % cols;
       const row = Math.floor(i / cols);
       const cellX = gridStartX + col * (cellWidth + gap);
@@ -1128,9 +1297,111 @@ class Game {
     ctx.fillStyle = '#4CAF50';
     ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + Math.round(50 * compact));
 
-    // Start and highscores buttons, side by side
+    // Start and back buttons, side by side
     const { btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX } = layout;
 
+    this.renderButton(
+      startBtnX, btnY, btnWidth, btnHeight,
+      t('startGame'), Math.round(26 * compact),
+      ['#66BB6A', '#43A047']
+    );
+    this.renderButton(
+      highscoreBtnX, btnY, btnWidth, btnHeight,
+      `← ${t('back')}`, Math.round(20 * compact),
+      ['#B0BEC5', '#90A4AE']
+    );
+
+    // Instructions - different for mobile vs desktop
+    const hintY = btnY + btnHeight + Math.round(30 * compact);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#999';
+    ctx.font = `${Math.round(13 * compact)}px system-ui`;
+    if (this.isMobile) {
+      ctx.fillText(`${t('practice')} - tap a table, then start`, centerX, hintY);
+    } else {
+      ctx.fillText('Number or arrow keys to pick a table  •  ESC to go back', centerX, hintY);
+    }
+  }
+
+  // The daily view: today's table, the speed picker and the way into practice.
+  renderDailyMenu() {
+    const ctx = this.ctx;
+    const layout = this.getDailyLayout();
+    const { centerX, compact, cardX, cardY, cardWidth, cardHeight } = layout;
+
+    // Card shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    this.roundRect(ctx, cardX + 4, cardY + 4, cardWidth, cardHeight, 15);
+    ctx.fill();
+
+    // Card background
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    this.roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 15);
+    ctx.fill();
+
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 3;
+    this.roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 15);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+
+    // Heading and today's date
+    ctx.fillStyle = '#B8860B';
+    ctx.font = `bold ${Math.round(15 * compact)}px system-ui`;
+    ctx.fillText(`📅 ${t('tableOfTheDay')}`, centerX, cardY + Math.round(26 * compact));
+
+    ctx.fillStyle = '#999';
+    ctx.font = `${Math.round(12 * compact)}px system-ui`;
+    ctx.fillText(this.formatToday(), centerX, cardY + Math.round(44 * compact));
+
+    // The table itself
+    ctx.fillStyle = '#2D5A1F';
+    ctx.font = `bold ${Math.round(58 * compact)}px system-ui`;
+    ctx.fillText(`${this.dailyTable}×`, centerX, cardY + Math.round(100 * compact));
+
+    // Your best on this table, and when the next one arrives
+    const best = this.highscores.getBestScore(this.dailyTable);
+    const bestSpeed = this.progress.getBestSpeed(this.dailyTable);
+
+    ctx.font = `${Math.round(13 * compact)}px system-ui`;
+    ctx.fillStyle = '#666';
+    const facts = [];
+    if (best > 0) facts.push(`★ ${t('yourBest')}: ${best}`);
+    if (bestSpeed > 0) facts.push(`${t('best')} ${t('speed').toLowerCase()}: ${bestSpeed}`);
+    ctx.fillText(
+      facts.length > 0 ? facts.join('   ·   ') : t('everyonePlaysToday'),
+      centerX, cardY + Math.round(126 * compact)
+    );
+
+    ctx.fillStyle = '#AAA';
+    ctx.font = `${Math.round(11 * compact)}px system-ui`;
+    ctx.fillText(
+      `⏳ ${t('newTableIn')} ${formatTimeUntilNextTable()}`,
+      centerX, cardY + Math.round(145 * compact)
+    );
+
+    // Speed selector card
+    const { speedCardY, speedCardHeight } = layout;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    this.roundRect(ctx, cardX, speedCardY, cardWidth, speedCardHeight, 15);
+    ctx.fill();
+
+    ctx.fillStyle = '#333';
+    ctx.font = `bold ${Math.round(16 * compact)}px system-ui`;
+    ctx.fillText(t('speedLevel'), centerX, speedCardY + Math.round(22 * compact));
+
+    ctx.font = `${Math.round(24 * compact)}px system-ui`;
+    ctx.fillStyle = '#888';
+    ctx.fillText('◀', centerX - 60, speedCardY + Math.round(52 * compact));
+    ctx.fillText('▶', centerX + 60, speedCardY + Math.round(52 * compact));
+
+    ctx.font = `bold ${Math.round(32 * compact)}px system-ui`;
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillText(this.selectedSpeed.toString(), centerX, speedCardY + Math.round(50 * compact));
+
+    // Start / highscores / practice
+    const { btnY, btnWidth, btnHeight, startBtnX, highscoreBtnX } = layout;
     this.renderButton(
       startBtnX, btnY, btnWidth, btnHeight,
       t('startGame'), Math.round(26 * compact),
@@ -1141,11 +1412,16 @@ class Game {
       `🏆 ${t('highscores')}`, Math.round(19 * compact),
       ['#5C6BC0', '#3949AB']
     );
+    this.renderButton(
+      layout.practiceBtnX, layout.practiceBtnY, layout.practiceBtnWidth, layout.practiceBtnHeight,
+      `🎯 ${t('practice')}`, Math.round(15 * compact),
+      ['#FFFFFF', '#ECEFF1'],
+      { color: '#546E7A', border: '#CFD8DC' }
+    );
 
     // Bird skins - unlocked by beating your own local highscores
     this.renderSkinPicker(layout);
 
-    // Instructions - different for mobile vs desktop
     const hintY = layout.skinY + layout.skinSize + Math.round(36 * compact);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#999';
@@ -1153,7 +1429,20 @@ class Game {
     if (this.isMobile) {
       ctx.fillText('Tap to start', centerX, hintY);
     } else {
-      ctx.fillText('SPACE to start  •  Arrows to adjust  •  H for highscores', centerX, hintY);
+      ctx.fillText('SPACE to start  •  H for highscores', centerX, hintY);
+    }
+  }
+
+  // Today's date in the player's language, e.g. "Thu 17 Sep".
+  formatToday() {
+    const locale = getLanguage() === 'sv' ? 'sv-SE' : 'en-GB';
+
+    try {
+      return new Date().toLocaleDateString(locale, {
+        weekday: 'short', day: 'numeric', month: 'short'
+      });
+    } catch (e) {
+      return this.dayKey;
     }
   }
 
@@ -1253,18 +1542,28 @@ class Game {
     this.renderTab(layout.localTabX, layout.tabY, layout.tabWidth, layout.tabHeight, t('localTab'), isLocal, compact);
     this.renderTab(layout.globalTabX, layout.tabY, layout.tabWidth, layout.tabHeight, t('globalTab'), !isLocal, compact);
 
-    // Table filter toggle
-    const filterLabel = this.highscoreShowAllTables ? t('allTables') : `${this.selectedTable}× ${t('tableAt')}`;
+    // Table selector: one list per table, plus an all-tables view
+    const isToday = this.highscoreTable === this.dailyTable;
+    const filterLabel = this.highscoreTable === null
+      ? t('allTables')
+      : `${this.highscoreTable}× ${t('tableAt')}${isToday ? ` · ${t('todayShort')}` : ''}`;
+
     ctx.fillStyle = '#EEF1F8';
     this.roundRect(ctx, layout.filterX, layout.filterY, layout.filterWidth, layout.filterHeight, 13);
     ctx.fill();
-    ctx.strokeStyle = '#C8CFE0';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = isToday ? '#FFC107' : '#C8CFE0';
+    ctx.lineWidth = isToday ? 2 : 1;
     this.roundRect(ctx, layout.filterX, layout.filterY, layout.filterWidth, layout.filterHeight, 13);
     ctx.stroke();
+
     ctx.fillStyle = '#42507A';
-    ctx.font = `${Math.round(12 * compact)}px system-ui`;
-    ctx.fillText(`⇄ ${filterLabel}`, centerX, layout.filterY + layout.filterHeight / 2 + 4);
+    ctx.font = `bold ${Math.round(13 * compact)}px system-ui`;
+    ctx.fillText(filterLabel, centerX, layout.filterY + layout.filterHeight / 2 + 5);
+
+    ctx.fillStyle = '#8A93AC';
+    ctx.font = `${Math.round(16 * compact)}px system-ui`;
+    ctx.fillText('◀', layout.prevTableX + layout.filterArrowWidth / 2, layout.filterY + layout.filterHeight / 2 + 6);
+    ctx.fillText('▶', layout.nextTableX + layout.filterArrowWidth / 2, layout.filterY + layout.filterHeight / 2 + 6);
 
     if (isLocal) {
       this.renderLocalScores(layout);
@@ -1299,10 +1598,9 @@ class Game {
   }
 
   renderLocalScores(layout) {
-    const table = this.highscoreShowAllTables ? null : this.selectedTable;
-    const entries = table === null
+    const entries = this.highscoreTable === null
       ? this.highscores.getTop(layout.maxRows)
-      : this.highscores.getForTable(table, layout.maxRows);
+      : this.highscores.getForTable(this.highscoreTable, layout.maxRows);
 
     if (entries.length === 0) {
       this.renderScoreMessage(layout, t('noScoresYet'));

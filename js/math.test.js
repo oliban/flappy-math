@@ -68,8 +68,8 @@ describe('Math Problem Generation', () => {
     expect(uniquePositions.size).toBeGreaterThan(1);
   });
 
-  test('generates problems for any table 2-12', () => {
-    for (let table = 2; table <= 12; table++) {
+  test('generates problems for any table 1-12', () => {
+    for (let table = 1; table <= 12; table++) {
       const multiplier = Math.floor(Math.random() * 12) + 1;
       const problem = generateProblem(table, multiplier);
       expect(problem.correctAnswer).toBe(table * multiplier);

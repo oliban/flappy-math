@@ -31,6 +31,7 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/highscores.js` - Local highscore list and personal bests per table
 - `js/skins.js` - Bird skins, unlocked by beating a personal best
 - `js/confetti.js` - Confetti particles for the new-record celebration
+- `js/dailyTable.js` - Date-seeded table of the day (deterministic, shared)
 - `js/globalScores.js` - Client for the shared leaderboard API
 - `js/player.js` - Player name used on the global list
 - `server/server.js` - Static file + API server (Node stdlib only)
@@ -38,14 +39,21 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `server/rateLimit.js` - Per-IP submission limiting
 
 **Highscores:**
-- Local list (LocalStorage) holds the top 20 runs plus a personal best per table
+- One list per table (plus an all-tables view); the local list (LocalStorage)
+  holds the top 20 runs and a personal best per table
 - Beating a local personal best plays `sounds/fanfare.wav`, fires confetti and
   unlocks the next bird skin - the only reward path
 - Global list lives on the server (`DATA_DIR/scores.json`), one best run per
   player per table, and degrades to an "unavailable" message when offline
 
+**Daily Table:**
+- The main mode plays the table of the day, seeded from the local calendar date
+  so every player gets the same table and a reload cannot reroll it
+- Practice mode (`menuView === 'practice'`) is where any table can be picked
+- The table rolls over at local midnight without a reload
+
 **Progression System:**
-- Tables 2×-12×, all accessible from start
+- Tables 1×-12×, all accessible in practice mode
 - Integer speed levels (1, 2, 3...) per table
 - Mastery = 10 correct answers in a row at a speed
 - Best speed per table saved to LocalStorage

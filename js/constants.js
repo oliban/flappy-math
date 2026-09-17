@@ -23,7 +23,7 @@ export const INITIAL_LIVES = 3;
 export const MASTERY_STREAK = 10;
 
 // Multiplication table and speed bounds
-export const MIN_TABLE = 2;
+export const MIN_TABLE = 1;
 export const MAX_TABLE = 12;
 export const MIN_SPEED = 1;
 export const MAX_SPEED = 99;

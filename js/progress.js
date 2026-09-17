@@ -1,7 +1,9 @@
+import { MIN_TABLE, MAX_TABLE } from './constants.js';
+
 export function createProgress() {
-  // Initialize all tables (2-12) with speed 0
+  // Initialize every playable table with speed 0
   const tables = {};
-  for (let i = 2; i <= 12; i++) {
+  for (let i = MIN_TABLE; i <= MAX_TABLE; i++) {
     tables[i] = 0;
   }
 

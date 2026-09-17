@@ -4,9 +4,14 @@ A Flappy Bird-style game for practicing multiplication tables. Fly through pipes
 
 ## How to Play
 
+**Table of the day:** the game picks one table (1x-12x) per calendar day and
+shows it on the start page. It is derived from the date, so it is the same for
+everyone that day and does not reroll when you reload; a new one arrives at
+local midnight. To drill a specific table, use **Practice** on the start page.
+
 **Controls:**
 - Press **Space** or **Click** to flap and fly upward
-- Use **Arrow keys** or **Number keys** to select multiplication table (2-12) and speed level in the menu
+- Use **Arrow keys** or **Number keys** to select a table (1-12) and the speed level in practice mode
 - Press **Escape** to return to menu
 - Press **H** (or the 🏆 button) to open the highscore lists
 
@@ -19,7 +24,9 @@ A Flappy Bird-style game for practicing multiplication tables. Fly through pipes
 
 ## Highscores
 
-Two lists, reachable from the menu or the game over screen:
+Every table has its own list. The screen opens on the table you just played and
+the arrows step through all tables plus an **All tables** view. Two lists,
+reachable from the menu or the game over screen:
 
 - **My Best (local)** - your own runs, stored in LocalStorage, with a personal
   best kept per times table. Beating your own record is what earns rewards.
@@ -35,7 +42,9 @@ unlocks and is equipped right away. There are nine birds to collect.
 
 ## Features
 
-- Multiplication tables 2x through 12x
+- A new table of the day, every day, the same for every player
+- Practice mode for drilling any table
+- Multiplication tables 1x through 12x
 - Adjustable speed levels (1-99)
 - Progress tracking with best speed saved per table
 - Mastery system: 10 correct in a row unlocks higher speeds
