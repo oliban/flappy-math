@@ -224,8 +224,30 @@ class Game {
     }
   }
 
-  showToast(avatarId, title) {
-    this.toast = { avatarId, title, until: performance.now() + 4500 };
+  showToast(avatarId, title, { selectable = true } = {}) {
+    const duration = 6000;
+    this.toast = { avatarId, title, until: performance.now() + duration, duration, selectable };
+  }
+
+  isHovered(rect) {
+    const p = this.pointer;
+    return !!p && p.x >= rect.x && p.x <= rect.x + rect.width && p.y >= rect.y && p.y <= rect.y + rect.height;
+  }
+
+  // Make an unlocked character clickable: hover ring + click selects it as the avatar
+  addSelectableCharacter(rect, avatarId) {
+    const ctx = this.ctx;
+    if (this.isHovered(rect)) {
+      ctx.strokeStyle = COLORS.gold;
+      ctx.lineWidth = 3;
+      roundRect(ctx, rect.x - 3, rect.y - 3, rect.width + 6, rect.height + 6, 22);
+      ctx.stroke();
+    }
+    this.hitAreas.add(rect, () => {
+      this.profile.setAvatar(avatarId);
+      this.applyAvatar();
+      this.showToast(avatarId, t('nowPlayingAs'), { selectable: false });
+    });
   }
 
   openGallery() {
@@ -313,6 +335,13 @@ class Game {
       e.preventDefault();
       this.handlePointer(e);
     });
+    // Hover tracking (mouse/pen): lets buttons and unlock cards highlight and show a pointer cursor
+    this.pointer = null;
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return;
+      this.pointer = this.toCanvasCoords(e);
+    });
+    this.canvas.addEventListener('pointerleave', () => { this.pointer = null; });
     this.canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
     this.canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -733,6 +762,10 @@ class Game {
     }
 
     this.renderToast();
+
+    // Pointer cursor over anything clickable
+    const overButton = this.pointer && this.hitAreas.hit(this.pointer.x, this.pointer.y);
+    this.canvas.style.cursor = overButton ? 'pointer' : 'default';
 
     if (SHOW_FPS) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -1222,14 +1255,21 @@ class Game {
 
       if (this.unlockedThisRun) {
         const name = Avatars.getAvatar(this.unlockedThisRun).name;
-        this.drawAvatarAt(cardX + cardW - 60, cardY + 60, 18, this.unlockedThisRun);
+        const bx = cardX + cardW - 60;
+        const badge = { x: bx - 56, y: cardY + 30, width: 112, height: 96 };
+        const isCurrent = this.unlockedThisRun === this.profile.getAvatarId();
+        ctx.fillStyle = isCurrent ? '#E3F5E8' : COLORS.muted;
+        roundRect(ctx, badge.x, badge.y, badge.width, badge.height, 18);
+        ctx.fill();
+        this.drawAvatarAt(bx, cardY + 62, 18, this.unlockedThisRun);
         ctx.fillStyle = COLORS.success;
-        ctx.font = font(12, '700');
+        ctx.font = font(11, '700');
         ctx.textAlign = 'center';
-        ctx.fillText(t('newCharacter'), cardX + cardW - 60, cardY + 96);
+        ctx.fillText(isCurrent ? t('nowPlayingAs') : t('newCharacter'), bx, cardY + 98);
         ctx.fillStyle = COLORS.inkSoft;
-        ctx.font = font(12, '600');
-        ctx.fillText(name, cardX + cardW - 60, cardY + 112);
+        ctx.font = font(11, '600');
+        ctx.fillText(name, bx, cardY + 114);
+        if (!isCurrent) this.addSelectableCharacter(badge, this.unlockedThisRun);
       }
 
       if (this.lastRank || this.isPersonalBest) {
@@ -1434,7 +1474,7 @@ class Game {
     if (!this.toast) return;
     // Keep the play field clean; the toast waits until the run is over
     if (this.state.current() === STATES.PLAYING) {
-      this.toast.until = Math.max(this.toast.until, performance.now() + 4500);
+      this.toast.until = Math.max(this.toast.until, performance.now() + this.toast.duration);
       return;
     }
     const now = performance.now();
@@ -1442,14 +1482,16 @@ class Game {
     const ctx = this.ctx;
     const W = this.canvasWidth;
     const remaining = this.toast.until - now;
-    const slide = Math.min(1, remaining / 400, (4500 - remaining) / 400);
+    const slide = Math.min(1, remaining / 400, (this.toast.duration - remaining) / 400);
     const name = Avatars.getAvatar(this.toast.avatarId).name;
-    const toastW = 320;
-    const toastH = 64;
+    const selectable = this.toast.selectable && this.toast.avatarId !== this.profile.getAvatarId();
+    const toastW = 340;
+    const toastH = selectable ? 80 : 64;
     const x = W / 2 - toastW / 2;
-    const y = this.canvasHeight - 70 - (1 - slide) * 90;
+    const y = this.canvasHeight - 70 - (toastH - 64) - (1 - slide) * 110;
+    const rect = { x, y, width: toastW, height: toastH };
     drawCard(ctx, x, y, toastW, toastH, { radius: 20, fill: 'rgba(31, 42, 68, 0.92)' });
-    this.drawAvatarAt(x + 36, y + toastH / 2, 18, this.toast.avatarId);
+    this.drawAvatarAt(x + 36, y + 32, 18, this.toast.avatarId);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.gold;
@@ -1458,6 +1500,12 @@ class Game {
     ctx.fillStyle = '#FFF';
     ctx.font = font(17, '600');
     ctx.fillText(name, x + 70, y + 44);
+    if (selectable) {
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = font(12, '600');
+      ctx.fillText(`👆 ${t('tapToUse')}`, x + 70, y + 65);
+      this.addSelectableCharacter(rect, this.toast.avatarId);
+    }
     ctx.textBaseline = 'alphabetic';
   }
 
