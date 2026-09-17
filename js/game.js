@@ -18,6 +18,7 @@ import * as Avatars from './avatars.js';
 import { createUnlocks } from './unlocks.js';
 import { createCharacterVoices } from './voices.js';
 import { createConfetti } from './confetti.js';
+import { getTableMascot } from './mascots.js';
 import { createGlobalScores } from './globalScores.js';
 import { getDailyTable, formatTimeUntilNextDay } from './weekly.js';
 import { createRun, MODES } from './run.js';
@@ -967,6 +968,15 @@ class Game {
     ctx.fillText(`${table}×`, cx, cardY + 132);
     ctx.textBaseline = 'alphabetic';
 
+    // Table mascot: the animal for this table, with its memory hook
+    const mascot = getTableMascot(table);
+    const lang = getLanguage() === 'sv' ? 'sv' : 'en';
+    this.drawAvatarAt(cx + 118, cardY + 122, 30, mascot.avatarId);
+    ctx.fillStyle = COLORS.secondary;
+    ctx.font = font(13, '700');
+    ctx.textAlign = 'center';
+    ctx.fillText(mascot.hook[lang], cx + 118, cardY + 172);
+
     ctx.fillStyle = COLORS.inkSoft;
     ctx.font = font(16, '600');
     ctx.fillText(t('weeklyHint'), cx, cardY + 218);
@@ -1041,10 +1051,12 @@ class Game {
       roundRect(ctx, x, y, cellW, cellH, 14);
       ctx.fill();
 
+      this.drawAvatarAt(x + cellW - 16, y + 15, 8, getTableMascot(table).avatarId);
       ctx.fillStyle = selected ? '#FFF' : COLORS.ink;
       ctx.font = font(22, '700');
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${table}×`, x + cellW / 2, y + (best > 0 ? 22 : cellH / 2));
+      ctx.textAlign = 'center';
+      ctx.fillText(`${table}×`, x + cellW / 2 - 6, y + (best > 0 ? 22 : cellH / 2));
       if (best > 0) {
         ctx.fillStyle = selected ? 'rgba(255,255,255,0.9)' : COLORS.inkSoft;
         ctx.font = font(11, '600');
@@ -1247,10 +1259,12 @@ class Game {
         const x = cardX + colW * i + colW / 2;
         ctx.fillStyle = COLORS.inkSoft;
         ctx.font = font(14, '600');
+        ctx.textAlign = 'center';
         ctx.fillText(label, x, cardY + 196);
         ctx.fillStyle = color;
         ctx.font = font(40, '700');
         ctx.fillText(value, x, cardY + 240);
+        if (i === 2) this.drawAvatarAt(x + 46, cardY + 226, 14, getTableMascot(this.run.table).avatarId);
       });
 
       if (this.unlockedThisRun) {
