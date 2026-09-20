@@ -18,6 +18,17 @@ describe('weather client', () => {
     expect(w.isDay).toBe(true);
   });
 
+  test('a missing temperature stays missing rather than reading 0°', async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ condition: 'clear', temperature: null, windSpeed: 0, isDay: true, place: 'Mölndal' })
+    });
+
+    const w = await createWeatherClient({ fetchFn }).fetch();
+
+    expect(w.temperature).toBeNull();
+  });
+
   test('offline resolves to the default weather instead of throwing', async () => {
     const w = await createWeatherClient({ fetchFn: vi.fn().mockRejectedValue(new Error('offline')) }).fetch();
     expect(w).toEqual(DEFAULT_WEATHER);

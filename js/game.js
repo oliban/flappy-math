@@ -233,8 +233,9 @@ class Game {
     }
   }
 
-  // Real weather where the player is shapes the sky, clouds, rain/snow and wind.
-  // Without browser coordinates the server geolocates by IP, falling back to Mölndal.
+  // Weather shapes the sky, clouds, rain/snow and wind. The server fetches it:
+  // Mölndal by default, or the player's own place once they opt in from the
+  // weather chip (the only thing that sends coordinates).
   refreshWeather() {
     this.weatherClient.fetch(this.coords || null).then(w => {
       this.weather = w;
@@ -268,6 +269,14 @@ class Game {
     );
   }
 
+  // Back to the default: forget the player's coordinates and refetch Mölndal.
+  useDefaultLocation() {
+    this.saveLocationChoice('denied');
+    this.coords = null;
+    console.info('[weather] using Mölndal weather');
+    this.refreshWeather();
+  }
+
   renderLocationCard() {
     const ctx = this.ctx;
     const W = this.canvasWidth;
@@ -294,12 +303,12 @@ class Game {
     this.hitAreas.add(yes, () => { this.showLocationCard = false; this.saveLocationChoice('granted'); this.requestPosition(); });
     const no = drawButton(ctx, cx + 10, btnY, 230, 52, t('locationNo'),
       { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 17 });
-    this.hitAreas.add(no, () => { this.showLocationCard = false; this.saveLocationChoice('denied'); console.info('[weather] location declined; using IP/Mölndal weather'); });
+    this.hitAreas.add(no, () => { this.showLocationCard = false; this.useDefaultLocation(); });
     // Swallow clicks on the rest of the screen while the card is up
     this.hitAreas.add({ x: 0, y: 0, width: W, height: this.canvasHeight }, () => {});
     // Re-add the buttons on top so they win the hit test
     this.hitAreas.add(yes, () => { this.showLocationCard = false; this.saveLocationChoice('granted'); this.requestPosition(); });
-    this.hitAreas.add(no, () => { this.showLocationCard = false; this.saveLocationChoice('denied'); });
+    this.hitAreas.add(no, () => { this.showLocationCard = false; this.useDefaultLocation(); });
   }
 
   weatherIcon(w) {
@@ -409,7 +418,9 @@ class Game {
       }
 
       if (e.code === 'Escape') {
-        if (state !== STATES.MENU) {
+        if (this.showLocationCard) {
+          this.showLocationCard = false;
+        } else if (state !== STATES.MENU) {
           this.state.returnToMenu();
         } else if (this.menuView === 'practice') {
           this.menuView = 'daily';
@@ -480,10 +491,17 @@ class Game {
     } else if (state === STATES.PLAYING) {
       this.flap();
     } else if (state === STATES.GAME_OVER) {
-      this.state.returnToMenu();
+      this.playAgain();
     } else if (state === STATES.HIGHSCORES || state === STATES.GALLERY) {
       this.state.returnToMenu();
     }
+  }
+
+  // Another run in the mode that just ended. Used by SPACE and the button.
+  playAgain() {
+    this.state.returnToMenu();
+    if (this.run.mode === MODES.DAILY) this.startDaily();
+    else this.startPractice();
   }
 
   flap() {
@@ -981,13 +999,11 @@ class Game {
       this.renderDailyPanel(cx);
     }
 
-    // First time only: explain why we'd like the location before the browser asks
-    const canAsk = this.state.current() === STATES.MENU && this.profile.hasName() && !this.profileUI.isVisible();
-    if (canAsk && this.locationChoice === null && navigator.geolocation && !this.showLocationCard && !this.locationCardShownOnce) {
-      this.locationCardShownOnce = true;
-      this.showLocationCard = true;
-    }
-    if (this.showLocationCard && canAsk) this.renderLocationCard();
+    // The location card is never shown on its own: the game uses Mölndal until
+    // the player opens this from the weather chip and asks for their own weather.
+    const canShowCard = this.state.current() === STATES.MENU && !this.profileUI.isVisible();
+    if (this.showLocationCard && canShowCard) this.renderLocationCard();
+    else if (this.showLocationCard && !canShowCard) this.showLocationCard = false;
   }
 
   renderBenchResults() {
@@ -1425,11 +1441,7 @@ class Game {
     const wMenu = total - wPlay - wHigh - 20;
     let bx = cardX + 20;
     const again = drawButton(ctx, bx, btnY, wPlay, btnH, t('playAgain'), { fontSize: 21, icon: '🔁' });
-    this.hitAreas.add(again, () => {
-      this.state.returnToMenu();
-      if (this.run.mode === MODES.DAILY) this.startDaily();
-      else this.startPractice();
-    });
+    this.hitAreas.add(again, () => this.playAgain());
     bx += wPlay + 10;
     const high = drawButton(ctx, bx, btnY, wHigh, btnH, t('highscores'),
       { color: COLORS.success, dark: COLORS.successDark, fontSize: 19, icon: '🏆' });

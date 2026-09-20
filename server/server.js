@@ -271,13 +271,13 @@ export function createRequestHandler() {
 
     if (url.pathname === '/api/weather') {
       if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }); return res.end(); }
-      // Location: browser coordinates if sent, otherwise the client's IP, otherwise Mölndal
+      // Location: browser coordinates when the player asked for their own
+      // weather, otherwise Mölndal. The player is never located from their IP.
       const report = await weather.get({
         lat: url.searchParams.get('lat'),
-        lon: url.searchParams.get('lon'),
-        ip: clientIp(req)
+        lon: url.searchParams.get('lon')
       });
-      console.log(`[weather] ${url.searchParams.has('lat') ? 'coords' : `ip ${clientIp(req)}`} → ${report.place}: ${report.condition} ${report.temperature}° wind ${report.windSpeed}${report.stale ? ' (stale)' : ''}`);
+      console.log(`[weather] ${url.searchParams.has('lat') ? 'coords' : 'default'} → ${report.place}: ${report.condition} ${report.temperature}° wind ${report.windSpeed}${report.stale ? ' (stale)' : ''}`);
       return sendJson(res, 200, report, { 'Cache-Control': 'private, max-age=120' });
     }
 

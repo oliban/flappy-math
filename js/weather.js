@@ -1,11 +1,15 @@
 // Client for /api/weather. Always resolves: offline means default (clear) weather.
+// Coordinates are only ever passed once the player has asked for their own
+// weather; otherwise the server answers with Mölndal.
 
 export const WEATHER_CONDITIONS = ['clear', 'clouds', 'overcast', 'fog', 'rain', 'snow', 'thunder'];
 export const DEFAULT_WEATHER = { condition: 'clear', temperature: null, windSpeed: 0, isDay: true, place: 'Mölndal' };
 
 export function parseWeather(body) {
   if (!body || typeof body !== 'object') return { ...DEFAULT_WEATHER };
-  const t = Number(body.temperature);
+  // A missing temperature must stay missing: Number(null) is 0, which would
+  // otherwise report a confident "0°" whenever the upstream is unavailable.
+  const t = body.temperature === null || body.temperature === undefined ? NaN : Number(body.temperature);
   const wind = Number(body.windSpeed);
   return {
     condition: WEATHER_CONDITIONS.includes(body.condition) ? body.condition : DEFAULT_WEATHER.condition,
@@ -36,7 +40,7 @@ export function createWeatherClient({
           const lon = (Math.round(Number(coords.lon) * 100) / 100).toFixed(2);
           target = `${url}?lat=${lat}&lon=${lon}`;
         }
-        console.info(`[weather] GET ${target}${coords ? ' (browser coordinates)' : ' (server decides: IP lookup, else Mölndal)'}`);
+        console.info(`[weather] GET ${target}${coords ? ' (player opted in: browser coordinates)' : ' (server default: Mölndal)'}`);
         const res = await fetchFn(target, { headers: { Accept: 'application/json' } });
         if (!res || !res.ok) {
           console.warn(`[weather] ${target} answered HTTP ${res && res.status}. Is the game served by the Node server (npm start)? A static server has no /api. Falling back to clear sky.`);

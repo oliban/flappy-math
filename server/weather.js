@@ -1,6 +1,7 @@
-// Current weather where the player is, via Open-Meteo (free, no API key).
-// Location comes from, in order: coordinates the browser sent (rounded to
-// ~1 km), an IP geolocation lookup, and finally Mölndal as the fallback.
+// Current weather via Open-Meteo (free, no API key).
+// Location is Mölndal unless the player has opted in and the browser sent
+// coordinates (rounded to ~1 km). The player is never located behind their
+// back - no IP lookup, no prompt.
 // Everything is cached in memory so upstreams are hit at most every TTL.
 
 export const MOLNDAL = { latitude: 57.6554, longitude: 12.0134, name: 'Mölndal' };
@@ -32,16 +33,6 @@ export function validCoords(lat, lon) {
   return Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180;
 }
 
-// Private / loopback ranges are useless for geolocation
-export function isPublicIp(rawIp) {
-  if (typeof rawIp !== 'string' || !rawIp) return false;
-  const ip = rawIp.replace(/^::ffff:/i, ''); // IPv4-mapped IPv6
-  if (ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('0.')) return false;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return false;
-  if (ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80') || ip === 'unknown') return false;
-  return true;
-}
-
 function boundedSet(map, key, value) {
   if (map.size >= MAX_CACHE_KEYS) map.delete(map.keys().next().value);
   map.set(key, value);
@@ -54,7 +45,6 @@ export function createWeatherService({
   fallback = MOLNDAL
 } = {}) {
   const weatherCache = new Map();  // coordKey -> { report, fetchedAt, inflight }
-  const ipCache = new Map();       // ip -> { location|null, at }
   const nameCache = new Map();     // coordKey -> { name, at }
 
   const headers = { headers: { Accept: 'application/json', 'User-Agent': 'flappy-math/1.0' } };
@@ -63,24 +53,6 @@ export function createWeatherService({
     const res = await fetchFn(url, headers);
     if (!res || !res.ok) throw new Error(`HTTP ${res && res.status} for ${url}`);
     return res.json();
-  }
-
-  async function locateByIp(ip) {
-    if (!fetchFn || !isPublicIp(ip)) return null;
-    const cached = ipCache.get(ip);
-    if (cached && now() - cached.at < GEO_TTL_MS) return cached.location;
-    let location = null;
-    try {
-      const body = await getJson(`https://ipapi.co/${encodeURIComponent(ip.replace(/^::ffff:/i, ''))}/json/`);
-      // (0,0) is what lookups return for unknown addresses: treat as no location
-      if (body && !body.error && validCoords(body.latitude, body.longitude) && !(Number(body.latitude) === 0 && Number(body.longitude) === 0)) {
-        location = { latitude: roundCoord(body.latitude), longitude: roundCoord(body.longitude), name: typeof body.city === 'string' && body.city ? body.city : null };
-      }
-    } catch (e) {
-      location = null;
-    }
-    boundedSet(ipCache, ip, { location, at: now() });
-    return location;
   }
 
   async function placeName(lat, lon) {
@@ -122,21 +94,19 @@ export function createWeatherService({
     };
   }
 
-  async function resolveLocation({ lat, lon, ip }) {
-    if (validCoords(lat, lon)) {
-      const latitude = roundCoord(lat);
-      const longitude = roundCoord(lon);
-      const name = (await placeName(latitude, longitude)) || fallback.name;
-      return { latitude, longitude, name };
-    }
-    const byIp = await locateByIp(ip);
-    if (byIp) return { ...byIp, name: byIp.name || (await placeName(byIp.latitude, byIp.longitude)) || fallback.name };
-    return { ...fallback };
+  // Coordinates only ever arrive because the player asked for their own weather.
+  async function resolveLocation({ lat, lon }) {
+    if (!validCoords(lat, lon)) return { ...fallback };
+
+    const latitude = roundCoord(lat);
+    const longitude = roundCoord(lon);
+    const name = (await placeName(latitude, longitude)) || fallback.name;
+    return { latitude, longitude, name };
   }
 
   return {
-    async get({ lat, lon, ip } = {}) {
-      const location = await resolveLocation({ lat, lon, ip });
+    async get({ lat, lon } = {}) {
+      const location = await resolveLocation({ lat, lon });
       const key = `${location.latitude},${location.longitude}`;
       let entry = weatherCache.get(key);
       if (entry && entry.report && now() - entry.fetchedAt <= ttlMs) return { ...entry.report, place: location.name };

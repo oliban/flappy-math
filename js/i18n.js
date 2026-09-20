@@ -50,7 +50,7 @@ const translations = {
     locationBody1: 'The game can show the same weather as outside your window.',
     locationBody2: 'Your position is rounded to about 1 km, used only for the weather and never saved.',
     locationYes: 'Yes, use my location',
-    locationNo: 'No thanks',
+    locationNo: 'Use Mölndal',
     weather_clear: 'clear', weather_clouds: 'cloudy', weather_overcast: 'overcast', weather_fog: 'fog', weather_rain: 'rain', weather_snow: 'snow', weather_thunder: 'thunder', weather_night: 'night',
 
     // Gallery / unlocks
@@ -158,7 +158,7 @@ const translations = {
     locationBody1: 'Spelet kan visa samma väder som utanför ditt fönster.',
     locationBody2: 'Din plats avrundas till ca 1 km, används bara för vädret och sparas inte.',
     locationYes: 'Ja, använd min plats',
-    locationNo: 'Nej tack',
+    locationNo: 'Använd Mölndal',
     weather_clear: 'klart', weather_clouds: 'molnigt', weather_overcast: 'mulet', weather_fog: 'dimma', weather_rain: 'regn', weather_snow: 'snö', weather_thunder: 'åska', weather_night: 'natt',
 
     // Gallery / unlocks

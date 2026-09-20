@@ -44,7 +44,7 @@ function fakeFetch({ ipGeo, reverse, weather = CURRENT, failIpGeo = false } = {}
 }
 
 describe('weather service', () => {
-  test('with no location hints it uses Mölndal', async () => {
+  test('with no coordinates it uses Mölndal', async () => {
     const fetchFn = fakeFetch();
     const svc = createWeatherService({ fetchFn, now: () => 1000 });
     const report = await svc.get({});
@@ -64,22 +64,15 @@ describe('weather service', () => {
     expect(fetchFn.calls.some(u => u.includes('ipapi.co'))).toBe(false);
   });
 
-  test('falls back to IP geolocation when there are no coordinates', async () => {
+  test('never locates the player by IP, even when one is passed', async () => {
     const fetchFn = fakeFetch({ ipGeo: { city: 'Luleå', latitude: 65.5848, longitude: 22.1547 } });
     const svc = createWeatherService({ fetchFn, now: () => 1000 });
-    const report = await svc.get({ ip: '203.0.113.7' });
-    expect(fetchFn.calls.some(u => u.includes('ipapi.co/203.0.113.7/'))).toBe(true);
-    expect(fetchFn.calls.find(u => u.includes('open-meteo'))).toContain('latitude=65.58');
-    expect(report.place).toBe('Luleå');
-  });
 
-  test('private or missing IPs and failed lookups fall back to Mölndal', async () => {
-    const fetchFn = fakeFetch({ failIpGeo: true });
-    const svc = createWeatherService({ fetchFn, now: () => 1000 });
-    expect((await svc.get({ ip: '192.168.1.5' })).place).toBe('Mölndal');
-    expect((await svc.get({ ip: '::ffff:127.0.0.1' })).place).toBe('Mölndal');
-    expect((await svc.get({ ip: '203.0.113.9' })).place).toBe('Mölndal');
-    expect(fetchFn.calls.filter(u => u.includes('ipapi.co')).length).toBe(1);
+    const report = await svc.get({ ip: '203.0.113.7' });
+
+    expect(fetchFn.calls.some(u => u.includes('ipapi.co'))).toBe(false);
+    expect(fetchFn.calls.find(u => u.includes('open-meteo'))).toContain(`latitude=${MOLNDAL.latitude}`);
+    expect(report.place).toBe('Mölndal');
   });
 
   test('rejects nonsense coordinates', async () => {
