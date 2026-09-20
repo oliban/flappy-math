@@ -19,6 +19,7 @@ import { createPlayer } from './player.js';
 import { drawBirdShape } from './bird.js';
 import { createConfetti } from './confetti.js';
 import { getDailyTable, getDayKey, formatTimeUntilNextTable } from './dailyTable.js';
+import { createWeatherClient, createLocationStore, describeWeather } from './weather.js';
 import { createSoundPlayer } from './sound.js';
 import { createVoicePlayer } from './voice.js';
 import { t, setLanguage, getLanguage, getAvailableLanguages, initLanguage } from './i18n.js';
@@ -45,6 +46,12 @@ class Game {
     this.player = createPlayer();
     this.globalScores = createGlobalScores();
     this.confetti = createConfetti();
+
+    // Weather comes from our own server; the browser is never asked where it is.
+    this.weatherClient = createWeatherClient();
+    this.locationStore = createLocationStore();
+    this.weather = { status: 'loading', reading: null };
+    this.weatherRequestId = 0;
     this.sound = createSoundPlayer();
     this.voice = createVoicePlayer();
     this.voice.init();
@@ -85,6 +92,8 @@ class Game {
     this.setupCanvas();
     this.setupInput();
     this.setupNameDialog();
+    this.setupLocationDialog();
+    this.refreshWeather();
 
     this.lastTime = 0;
     this.gameLoop = this.gameLoop.bind(this);
@@ -290,8 +299,8 @@ class Game {
 
   setupInput() {
     document.addEventListener('keydown', (e) => {
-      // The name dialog owns the keyboard while it is open.
-      if (this.isNameDialogOpen()) return;
+      // An open dialog owns the keyboard.
+      if (this.isNameDialogOpen() || this.isLocationDialogOpen()) return;
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -370,6 +379,12 @@ class Game {
     const centerX = this.canvasWidth / 2;
 
     if (this.state.current() === STATES.MENU) {
+      // Weather text opens the location picker
+      if (this.hitsRect(x, y, this.getWeatherRect())) {
+        this.openLocationDialog();
+        return;
+      }
+
       // Voice toggle
       const langY = 30;
       const langStartX = this.canvasWidth - 100;
@@ -450,6 +465,10 @@ class Game {
     } else if (this.state.current() === STATES.GAME_OVER) {
       const buttons = this.getGameOverButtons();
 
+      if (this.hitsRect(x, y, buttons.playAgain)) {
+        this.playAgain();
+        return;
+      }
       if (this.hitsRect(x, y, buttons.highscores)) {
         this.openHighscores();
         return;
@@ -532,8 +551,14 @@ class Game {
         this.currentProblem.spoken = true;
       }
     } else if (currentState === STATES.GAME_OVER) {
-      this.state.returnToMenu();
+      this.playAgain();
     }
+  }
+
+  // Straight back into another run on the same table and speed.
+  playAgain() {
+    this.state.returnToMenu();
+    this.startGame();
   }
 
   startGame() {
@@ -1016,21 +1041,183 @@ class Game {
     const gap = 10;
     const needsName = Boolean(this.globalSubmission && this.globalSubmission.status === 'no-name');
 
-    const widths = needsName ? [150, 200, 170] : [200, 170];
+    const widths = needsName ? [140, 200, 120, 160] : [200, 120, 160];
     const total = widths.reduce((sum, w) => sum + w, 0) + gap * (widths.length - 1);
 
     let x = centerX - total / 2;
     const buttons = {};
 
     if (needsName) {
-      buttons.name = { x, y, width: 150, height };
-      x += 150 + gap;
+      buttons.name = { x, y, width: 140, height };
+      x += 140 + gap;
     }
-    buttons.continue = { x, y, width: 200, height };
+    buttons.playAgain = { x, y, width: 200, height };
     x += 200 + gap;
-    buttons.highscores = { x, y, width: 170, height };
+    buttons.menu = { x, y, width: 120, height };
+    x += 120 + gap;
+    buttons.highscores = { x, y, width: 160, height };
 
     return buttons;
+  }
+
+  refreshWeather() {
+    const requestId = ++this.weatherRequestId;
+    this.weather = { status: 'loading', reading: this.weather ? this.weather.reading : null };
+
+    this.weatherClient.fetchWeather(this.locationStore.load()).then(result => {
+      if (requestId !== this.weatherRequestId) return; // a newer request won
+
+      this.weather = result.ok
+        ? { status: 'ok', reading: result.weather }
+        : { status: 'error', reading: null };
+    });
+  }
+
+  // Bounding box of the weather text on the menu, for hit testing.
+  getWeatherRect() {
+    const height = 26;
+
+    return {
+      x: 12,
+      y: 16,
+      width: Math.min(230, this.canvasWidth * 0.4),
+      height
+    };
+  }
+
+  weatherLabel() {
+    if (this.weather.status === 'loading' && !this.weather.reading) return '⛅ …';
+    if (this.weather.status === 'error') return `🌡️ ${t('weatherUnavailable')}`;
+
+    const reading = this.weather.reading;
+    if (!reading) return `🌡️ ${t('weatherUnknown')}`;
+
+    const { icon } = describeWeather(reading.code, reading.isDay);
+    const place = reading.location.name || '';
+    return `${icon} ${place} ${Math.round(reading.temperature)}°`;
+  }
+
+  setupLocationDialog() {
+    this.locationDialog = document.getElementById('location-dialog');
+    if (!this.locationDialog) return;
+
+    this.locationInput = document.getElementById('location-input');
+    this.locationResults = document.getElementById('location-results');
+    this.locationStatus = document.getElementById('location-status');
+
+    document.getElementById('location-search').addEventListener('click', () => this.searchLocation());
+    document.getElementById('location-close').addEventListener('click', () => this.closeLocationDialog());
+    document.getElementById('location-mine').addEventListener('click', () => this.useDeviceLocation());
+    document.getElementById('location-default').addEventListener('click', () => {
+      this.locationStore.clear();
+      this.refreshWeather();
+      this.closeLocationDialog();
+    });
+
+    this.locationInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') this.searchLocation();
+      if (e.key === 'Escape') this.closeLocationDialog();
+    });
+  }
+
+  isLocationDialogOpen() {
+    return Boolean(this.locationDialog) && !this.locationDialog.classList.contains('hidden');
+  }
+
+  openLocationDialog() {
+    if (!this.locationDialog) return;
+
+    document.getElementById('location-dialog-title').textContent = t('locationTitle');
+    document.getElementById('location-dialog-hint').textContent = t('locationHint');
+    document.getElementById('location-search').textContent = t('locationSearch');
+    document.getElementById('location-mine').textContent = t('locationUseMine');
+    document.getElementById('location-default').textContent = t('locationUseDefault');
+    document.getElementById('location-close').textContent = t('close');
+    this.locationInput.placeholder = t('locationPlaceholder');
+
+    this.locationStatus.textContent = '';
+    this.locationResults.innerHTML = '';
+    this.locationInput.value = '';
+    this.locationDialog.classList.remove('hidden');
+    this.locationInput.focus();
+  }
+
+  closeLocationDialog() {
+    if (this.locationDialog) this.locationDialog.classList.add('hidden');
+  }
+
+  async searchLocation() {
+    const query = this.locationInput.value;
+    if (!query.trim()) return;
+
+    this.locationStatus.textContent = t('locationSearching');
+    this.locationResults.innerHTML = '';
+
+    const result = await this.weatherClient.searchPlaces(query);
+
+    if (!result.ok) {
+      this.locationStatus.textContent = t('locationFailed');
+      return;
+    }
+    if (result.places.length === 0) {
+      this.locationStatus.textContent = t('locationNoResults');
+      return;
+    }
+
+    this.locationStatus.textContent = '';
+    result.places.forEach(place => this.addLocationResult(place));
+  }
+
+  addLocationResult(place) {
+    const detail = [place.region, place.country].filter(Boolean).join(', ');
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.textContent = place.name;
+
+    if (detail) {
+      const span = document.createElement('span');
+      span.className = 'place-detail';
+      span.textContent = `  ${detail}`;
+      button.appendChild(span);
+    }
+
+    button.addEventListener('click', () => this.chooseLocation(place));
+    item.appendChild(button);
+    this.locationResults.appendChild(item);
+  }
+
+  chooseLocation(place) {
+    if (!this.locationStore.save(place)) return;
+
+    this.refreshWeather();
+    this.closeLocationDialog();
+  }
+
+  // Only ever runs because the player asked for it by pressing the button.
+  useDeviceLocation() {
+    if (!navigator.geolocation) {
+      this.locationStatus.textContent = t('locationFailed');
+      return;
+    }
+
+    this.locationStatus.textContent = t('locationSearching');
+
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        this.chooseLocation({
+          name: '',
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      },
+      () => {
+        this.locationStatus.textContent = t('locationDenied');
+      },
+      { timeout: 8000 }
+    );
   }
 
   setupNameDialog() {
@@ -1124,6 +1311,21 @@ class Game {
   renderMenu() {
     const ctx = this.ctx;
     const centerX = this.canvasWidth / 2;
+
+    // Weather (top left) - click it to change location
+    const weatherRect = this.getWeatherRect();
+    const label = this.weatherLabel();
+
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'left';
+    const labelWidth = Math.min(ctx.measureText(label).width + 20, weatherRect.width);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    this.roundRect(ctx, weatherRect.x, weatherRect.y, labelWidth, weatherRect.height, 13);
+    ctx.fill();
+
+    ctx.fillStyle = '#4A5A6A';
+    ctx.fillText(label, weatherRect.x + 10, weatherRect.y + 18);
 
     // Voice toggle and Language selector (top right)
     const langs = getAvailableLanguages();
@@ -1980,8 +2182,13 @@ class Game {
     }
 
     this.renderButton(
-      buttons.continue.x, buttons.continue.y, buttons.continue.width, buttons.continue.height,
-      t('pressToContinue'), 15, ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.18)'],
+      buttons.playAgain.x, buttons.playAgain.y, buttons.playAgain.width, buttons.playAgain.height,
+      `${t('playAgain')}  (SPACE)`, 15, ['#66BB6A', '#43A047']
+    );
+
+    this.renderButton(
+      buttons.menu.x, buttons.menu.y, buttons.menu.width, buttons.menu.height,
+      t('menu'), 15, ['rgba(255,255,255,0.3)', 'rgba(255,255,255,0.18)'],
       { border: 'rgba(255, 255, 255, 0.45)' }
     );
 

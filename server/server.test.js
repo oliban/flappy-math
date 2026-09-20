@@ -9,6 +9,45 @@ import path from 'node:path';
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'flappy-scores-'));
 process.env.DATA_DIR = dataDir;
 
+// A stub standing in for Open-Meteo: the real provider is a third party, and
+// the point of this feature is that the server - not the browser - calls it.
+const upstream = { forecastCalls: [], searchCalls: [], failing: false };
+
+const upstreamServer = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://upstream.test');
+
+  if (upstream.failing) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    return res.end('{}');
+  }
+
+  if (url.pathname === '/v1/forecast') {
+    upstream.forecastCalls.push(url.search);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      current: { temperature_2m: 12.7, weather_code: 61, wind_speed_10m: 3.5, is_day: 1 }
+    }));
+  }
+
+  if (url.pathname === '/v1/search') {
+    upstream.searchCalls.push(url.searchParams.get('name'));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      results: [
+        { name: 'Stockholm', country: 'Sweden', admin1: 'Stockholm', latitude: 59.3293, longitude: 18.0686 }
+      ]
+    }));
+  }
+
+  res.writeHead(404);
+  res.end();
+});
+
+await new Promise(resolve => upstreamServer.listen(0, '127.0.0.1', resolve));
+const upstreamBase = `http://127.0.0.1:${upstreamServer.address().port}`;
+process.env.WEATHER_API_URL = `${upstreamBase}/v1/forecast`;
+process.env.GEOCODING_API_URL = `${upstreamBase}/v1/search`;
+
 const { createRequestHandler } = await import('./server.js');
 
 let server;
@@ -38,6 +77,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise(resolve => server.close(resolve));
+  await new Promise(resolve => upstreamServer.close(resolve));
   await fs.rm(dataDir, { recursive: true, force: true });
 });
 
@@ -160,6 +200,96 @@ describe('scores API', () => {
     const saved = JSON.parse(await fs.readFile(path.join(dataDir, 'scores.json'), 'utf8'));
 
     expect(saved.tables['4'].some(e => e.name === 'Ada')).toBe(true);
+  });
+});
+
+describe('weather API', () => {
+  test('serves Mölndal weather without being told a location', async () => {
+    const response = await fetch(`${baseUrl}/api/weather`);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.weather).toMatchObject({ temperature: 12.7, code: 61 });
+    expect(body.weather.location.name).toBe('Mölndal');
+  });
+
+  test('the server is the one that called the provider', async () => {
+    expect(upstream.forecastCalls.length).toBeGreaterThan(0);
+    expect(upstream.forecastCalls[0]).toContain('latitude=57.6554');
+  });
+
+  test('answers a repeat request from cache instead of the provider', async () => {
+    const before = upstream.forecastCalls.length;
+    const body = await (await fetch(`${baseUrl}/api/weather`)).json();
+
+    expect(upstream.forecastCalls.length).toBe(before);
+    expect(body.cached).toBe(true);
+  });
+
+  test('serves another location when coordinates are given', async () => {
+    const response = await fetch(`${baseUrl}/api/weather?lat=59.3293&lon=18.0686&name=Stockholm`);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.weather.location).toMatchObject({ name: 'Stockholm', latitude: 59.3293 });
+  });
+
+  test('rejects nonsense coordinates', async () => {
+    const response = await fetch(`${baseUrl}/api/weather?lat=999&lon=0`);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe('invalid-coordinates');
+  });
+
+  test('falls back to the default location when only one coordinate is given', async () => {
+    const body = await (await fetch(`${baseUrl}/api/weather?lat=59.3293`)).json();
+
+    expect(body.weather.location.name).toBe('Mölndal');
+  });
+
+  test('rejects unsupported methods', async () => {
+    const response = await fetch(`${baseUrl}/api/weather`, { method: 'POST' });
+
+    expect(response.status).toBe(405);
+  });
+
+  test('looks up places by name', async () => {
+    const response = await fetch(`${baseUrl}/api/weather/search?q=stockholm`);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.places[0]).toMatchObject({ name: 'Stockholm', country: 'Sweden' });
+    expect(upstream.searchCalls).toContain('stockholm');
+  });
+
+  test('rejects an empty place query', async () => {
+    const response = await fetch(`${baseUrl}/api/weather/search?q=`);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe('invalid-query');
+  });
+
+  test('reports upstream trouble rather than crashing', async () => {
+    upstream.failing = true;
+    try {
+      const response = await fetch(`${baseUrl}/api/weather/search?q=goteborg`);
+
+      expect(response.status).toBe(503);
+      expect((await response.json()).error).toBe('upstream');
+    } finally {
+      upstream.failing = false;
+    }
+  });
+
+  test('keeps serving a cached reading while the provider is down', async () => {
+    upstream.failing = true;
+    try {
+      const body = await (await fetch(`${baseUrl}/api/weather`)).json();
+
+      expect(body.weather.temperature).toBe(12.7);
+    } finally {
+      upstream.failing = false;
+    }
   });
 });
 

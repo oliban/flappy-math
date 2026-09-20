@@ -98,8 +98,9 @@ body {
   }
 }
 
-/* Name entry dialog (global highscore list) */
-#name-dialog {
+/* Dialogs: name entry and weather location */
+#name-dialog,
+#location-dialog {
   position: fixed;
   inset: 0;
   background: rgba(10, 14, 25, 0.75);
@@ -110,11 +111,13 @@ body {
   padding: 20px;
 }
 
-#name-dialog.hidden {
+#name-dialog.hidden,
+#location-dialog.hidden {
   display: none;
 }
 
-#name-dialog .dialog-card {
+#name-dialog .dialog-card,
+#location-dialog .dialog-card {
   background: #FFF;
   border-radius: 16px;
   padding: 22px 24px;
@@ -123,19 +126,22 @@ body {
   text-align: center;
 }
 
-#name-dialog h2 {
+#name-dialog h2,
+#location-dialog h2 {
   font-size: 22px;
   color: #2D5A1F;
   margin-bottom: 6px;
 }
 
-#name-dialog p {
+#name-dialog p,
+#location-dialog p {
   font-size: 14px;
   color: #777;
   margin-bottom: 16px;
 }
 
-#name-dialog input {
+#name-dialog input,
+#location-dialog input {
   width: 100%;
   font-size: 20px;
   font-family: inherit;
@@ -146,17 +152,20 @@ body {
   outline: none;
 }
 
-#name-dialog input:focus {
+#name-dialog input:focus,
+#location-dialog input:focus {
   border-color: #4CAF50;
 }
 
-#name-dialog .dialog-buttons {
+#name-dialog .dialog-buttons,
+#location-dialog .dialog-buttons {
   display: flex;
   gap: 10px;
   margin-top: 16px;
 }
 
-#name-dialog button {
+#name-dialog button,
+#location-dialog button {
   flex: 1;
   font-family: inherit;
   font-size: 16px;
@@ -180,4 +189,75 @@ body {
 #name-dialog #name-save:disabled {
   background: #BBB;
   cursor: not-allowed;
+}
+
+/* Weather location dialog specifics */
+#location-dialog .dialog-row {
+  display: flex;
+  gap: 8px;
+}
+
+#location-dialog .dialog-row input {
+  flex: 1;
+  text-align: left;
+}
+
+#location-dialog .dialog-row button {
+  flex: 0 0 auto;
+  padding: 0 16px;
+  background: #4CAF50;
+  color: #FFF;
+}
+
+#location-dialog .dialog-status {
+  min-height: 18px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+#location-dialog ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+#location-dialog li button {
+  width: 100%;
+  text-align: left;
+  background: #F4F6FA;
+  color: #333;
+  font-weight: normal;
+  font-size: 15px;
+  padding: 9px 12px;
+  margin-bottom: 6px;
+}
+
+#location-dialog li button:hover {
+  background: #E3F2E4;
+}
+
+#location-dialog li .place-detail {
+  color: #888;
+  font-size: 13px;
+}
+
+#location-dialog #location-mine {
+  background: #5C6BC0;
+  color: #FFF;
+}
+
+#location-dialog #location-default {
+  background: #EEE;
+  color: #555;
+}
+
+#location-dialog .dialog-close {
+  width: 100%;
+  margin-top: 10px;
+  background: transparent;
+  color: #888;
+  font-weight: normal;
 }

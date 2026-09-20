@@ -1,6 +1,7 @@
 export const PROGRESS_KEY = 'flappy-math-progress';
 export const HIGHSCORES_KEY = 'flappy-math-highscores';
 export const SKINS_KEY = 'flappy-math-skins';
+export const LOCATION_KEY = 'flappy-math-location';
 
 // One factory per stored document - pass the key of the document to persist.
 export function createStorage(localStorage = window.localStorage, storageKey = PROGRESS_KEY) {

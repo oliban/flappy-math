@@ -34,9 +34,11 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/dailyTable.js` - Date-seeded table of the day (deterministic, shared)
 - `js/globalScores.js` - Client for the shared leaderboard API
 - `js/player.js` - Player name used on the global list
+- `js/weather.js` - Weather client (talks to our server only) and saved location
 - `server/server.js` - Static file + API server (Node stdlib only)
 - `server/scores.js` - Global leaderboard store: validation, ranking, capping
 - `server/rateLimit.js` - Per-IP submission limiting
+- `server/weather.js` - Server-side weather fetching, caching and place lookup
 
 **Highscores:**
 - One list per table (plus an all-tables view); the local list (LocalStorage)
@@ -45,6 +47,14 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
   unlocks the next bird skin - the only reward path
 - Global list lives on the server (`DATA_DIR/scores.json`), one best run per
   player per table, and degrades to an "unavailable" message when offline
+
+**Weather:**
+- The server fetches it (Open-Meteo), caches per location for 10 minutes and
+  serves a stale reading rather than nothing when the provider is down
+- The browser only ever calls our own `/api/weather`; it is never asked for its
+  location unless the player presses "Use my location" in the picker
+- Defaults to Mölndal; a chosen location is kept in LocalStorage
+- `WEATHER_API_URL` / `GEOCODING_API_URL` point the server at a stub in tests
 
 **Daily Table:**
 - The main mode plays the table of the day, seeded from the local calendar date

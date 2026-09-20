@@ -28,6 +28,24 @@
     </div>
   </div>
 
+  <div id="location-dialog" class="hidden">
+    <div class="dialog-card">
+      <h2 id="location-dialog-title">Weather location</h2>
+      <p id="location-dialog-hint">Search for a place, or use where you are</p>
+      <div class="dialog-row">
+        <input id="location-input" type="text" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button id="location-search" type="button">Search</button>
+      </div>
+      <p id="location-status" class="dialog-status"></p>
+      <ul id="location-results"></ul>
+      <div class="dialog-buttons">
+        <button id="location-mine" type="button">Use my location</button>
+        <button id="location-default" type="button">Use Mölndal</button>
+      </div>
+      <button id="location-close" type="button" class="dialog-close">Close</button>
+    </div>
+  </div>
+
   <div id="portrait-warning">
     <div class="rotate-icon">📱</div>
     <h2>Rotate Your Device</h2>

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createEmptyStore, parseStore, validateEntry, insertEntry, topEntries } from './scores.js';
 import { createRateLimiter } from './rateLimit.js';
+import { createWeatherService, DEFAULT_LOCATION } from './weather.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -51,6 +52,14 @@ const PUBLIC_DIRS = ['js', 'css', 'sounds'];
 const PUBLIC_FILES = ['index.html', 'favicon.ico', 'robots.txt'];
 
 const submitLimiter = createRateLimiter({ limit: 20, windowMs: 60 * 1000 });
+// Place lookups hit a third party, so they get a tighter budget than the cached
+// weather endpoint, which mostly answers from memory.
+const searchLimiter = createRateLimiter({ limit: 30, windowMs: 60 * 1000 });
+
+const weather = createWeatherService({
+  weatherUrl: process.env.WEATHER_API_URL || undefined,
+  geocodingUrl: process.env.GEOCODING_API_URL || undefined
+});
 
 let store = createEmptyStore();
 let writeQueue = Promise.resolve();
@@ -203,6 +212,55 @@ async function handlePostScore(req, res) {
   });
 }
 
+function parseCoordinate(value, limit) {
+  if (value === null || value === undefined || value === '') return null;
+
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < -limit || number > limit) return undefined;
+  return number;
+}
+
+async function handleGetWeather(req, res, url) {
+  const latitude = parseCoordinate(url.searchParams.get('lat'), 90);
+  const longitude = parseCoordinate(url.searchParams.get('lon'), 180);
+
+  if (latitude === undefined || longitude === undefined) {
+    return sendJson(res, 400, { error: 'invalid-coordinates' });
+  }
+
+  // Either both coordinates or neither; anything else falls back to the default.
+  const requested = latitude !== null && longitude !== null
+    ? { latitude, longitude, name: url.searchParams.get('name') || '' }
+    : {};
+
+  const result = await weather.getWeather(requested);
+
+  if (!result.ok) {
+    return sendJson(res, 503, { error: result.error, location: DEFAULT_LOCATION });
+  }
+
+  sendJson(res, 200, {
+    weather: result.weather,
+    cached: Boolean(result.cached),
+    stale: Boolean(result.stale)
+  });
+}
+
+async function handleSearchPlaces(req, res, url) {
+  if (!searchLimiter.check(clientIp(req))) {
+    return sendJson(res, 429, { error: 'rate-limited' });
+  }
+
+  const result = await weather.searchPlaces(url.searchParams.get('q') || '');
+
+  if (!result.ok) {
+    const status = result.error === 'invalid-query' ? 400 : 503;
+    return sendJson(res, status, { error: result.error });
+  }
+
+  sendJson(res, 200, { places: result.places });
+}
+
 function cacheControlFor(ext) {
   if (ext === '.mp3' || ext === '.wav' || ext === '.ogg') return 'public, max-age=604800, immutable';
   if (ext === '.css' || ext === '.js' || ext === '.mjs') return 'public, max-age=86400';
@@ -263,6 +321,22 @@ export function createRequestHandler() {
 
     if (url.pathname === '/api/health') {
       return sendJson(res, 200, { ok: true, persistence: persistenceEnabled });
+    }
+
+    if (url.pathname === '/api/weather') {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { Allow: 'GET' });
+        return res.end();
+      }
+      return handleGetWeather(req, res, url);
+    }
+
+    if (url.pathname === '/api/weather/search') {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { Allow: 'GET' });
+        return res.end();
+      }
+      return handleSearchPlaces(req, res, url);
     }
 
     if (url.pathname === '/api/scores') {

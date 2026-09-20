@@ -11,6 +11,7 @@ local midnight. To drill a specific table, use **Practice** on the start page.
 
 **Controls:**
 - Press **Space** or **Click** to flap and fly upward
+- Press **Space** on the game over screen to play the same table again
 - Use **Arrow keys** or **Number keys** to select a table (1-12) and the speed level in practice mode
 - Press **Escape** to return to menu
 - Press **H** (or the 🏆 button) to open the highscore lists
@@ -42,6 +43,7 @@ unlocks and is equipped right away. There are nine birds to collect.
 
 ## Features
 
+- Server-fetched weather on the start page, Mölndal by default
 - A new table of the day, every day, the same for every player
 - Practice mode for drilling any table
 - Multiplication tables 1x through 12x
@@ -71,12 +73,28 @@ Then open `http://localhost:8080` in your browser. Global scores are written to
 `npx serve .` still works for pure front-end work, but the global list will be
 unavailable because there is no API behind it.
 
+## Weather
+
+The start page shows the weather, fetched **by the server** - the browser never
+talks to the weather provider and is never asked where it is. It shows Mölndal
+by default; clicking the weather text opens a picker to search for another
+place or, only if you press that button, to use your device location. The
+choice is remembered in LocalStorage.
+
+Readings come from [Open-Meteo](https://open-meteo.com) (no API key) and are
+cached for 10 minutes per location, shared across all players. If the provider
+is unreachable the last reading is served instead, and failing that the text
+reads "Weather unavailable" and nothing else breaks. Override the endpoints
+with `WEATHER_API_URL` and `GEOCODING_API_URL`.
+
 ## API
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/api/scores?table=<2-12>&limit=<1-50>` | Top global scores, optionally for one table |
+| `GET`  | `/api/scores?table=<1-12>&limit=<1-50>` | Top global scores, optionally for one table |
 | `POST` | `/api/scores` | Submit `{ name, score, table, speed, streak }`; responds with the rank |
+| `GET`  | `/api/weather?lat=&lon=&name=` | Current weather; defaults to Mölndal when no coordinates are given |
+| `GET`  | `/api/weather/search?q=` | Look up places by name |
 | `GET`  | `/api/health` | Liveness check |
 
 Submissions are validated and rate limited (20/minute per IP), dates are
