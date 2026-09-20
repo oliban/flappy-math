@@ -1,4 +1,4 @@
-import { BASE_HEIGHT, MIN_TABLE, MAX_TABLE } from './constants.js';
+import { BASE_HEIGHT, GROUND_Y, MIN_TABLE, MAX_TABLE } from './constants.js';
 import { pipeSpeedFor } from './pace.js';
 import { createGameState, STATES } from './state.js';
 import { createBird } from './bird.js';
@@ -18,6 +18,7 @@ import * as Avatars from './avatars.js';
 import { createUnlocks } from './unlocks.js';
 import { createCharacterVoices } from './voices.js';
 import { createConfetti } from './confetti.js';
+import { createEffects, tierForStreak, tierSpec } from './effects.js';
 import { getTableMascot } from './mascots.js';
 import { createWeatherClient } from './weather.js';
 import { createGlobalScores } from './globalScores.js';
@@ -60,6 +61,7 @@ class Game {
     this.unlocks = createUnlocks({ starterIds: this.starterIds, allIds: this.allAvatarIds });
     this.toast = null;          // { avatarId, title, until }
     this.confetti = createConfetti();
+    this.effects = createEffects();   // per-answer reward effects during play
     this.weather = null;
     this.weatherClient = createWeatherClient({ override: new URLSearchParams(window.location.search).get('weather') });
     this.locationChoice = this.readLocationChoice(); // 'granted' | 'denied' | null
@@ -517,6 +519,8 @@ class Game {
     this.state.startGame();
     this.bird.reset();
     this.scoring.reset();
+    this.confetti.clear();
+    this.effects.clear();   // never carry a celebration over from the last run
     this.pipes = [];
     this.showMasteryMessage = false;
     this.lastRank = null;
@@ -624,6 +628,7 @@ class Game {
 
   update() {
     this.confetti.update(1);
+    this.effects.update(1);
     if (this.state.current() !== STATES.PLAYING) {
       this.background.update(0.3);
       return;
@@ -696,6 +701,7 @@ class Game {
   onCorrect(answer) {
     this.scoring.correctAnswer();
     this.run.onCorrect();
+    this.celebrateAnswer();
 
     const slow = this.run.speed <= 7;
     if (slow) {
@@ -726,6 +732,10 @@ class Game {
   onWrong() {
     this.scoring.wrongAnswer();
     this.run.onWrong();
+    // The streak is gone: blink the player's own character red and put the
+    // celebration out, so the reset and the mistake land as one moment.
+    this.bird.hurtFlash();
+    this.effects.extinguish();
 
     const slow = this.run.speed <= 7;
     if (slow) {
@@ -757,6 +767,8 @@ class Game {
     this.state.endGame();
     this.isFadingOut = false;
     this.fadeOut = 0;
+    this.effects.clear();
+    this.confetti.clear();
 
     this.isPersonalBest = false;
     this.globalRank = null;
@@ -788,6 +800,41 @@ class Game {
     } else if (!this.showMasteryMessage) {
       this.sound.play('gameover');
     }
+  }
+
+  // Effects live only as long as the gap between pipes allows, so a
+  // celebration never sits on top of the next question.
+  effectLifeScale() {
+    const speed = this.getGameSpeed();
+    const framesBetweenPipes = speed > 0 ? this.pipeSpacing() / speed : 999;
+    return Math.min(1, Math.max(0.35, framesBetweenPipes / 150));
+  }
+
+  // The reward ladder: tier 1 on the first correct answer, climbing one step
+  // per consecutive answer up to the fireworks finale, back to 1 on a mistake.
+  celebrateAnswer() {
+    const tier = tierForStreak(this.scoring.streak);
+    const spec = tierSpec(tier);
+    if (!spec) return;
+
+    const lifeScale = this.effectLifeScale();
+    this.confetti.burst({
+      x: this.bird.x,
+      y: this.bird.y,
+      count: spec.confetti,
+      angle: -Math.PI / 2,
+      spread: Math.PI * 1.3,
+      speed: 3 + tier * 0.35,
+      life: Math.round(80 * lifeScale)
+    });
+    this.effects.celebrate(tier, {
+      x: this.bird.x,
+      y: this.bird.y,
+      width: this.canvasWidth,
+      height: this.canvasHeight,
+      groundY: GROUND_Y,   // jets and the fountain start on the grass
+      lifeScale
+    });
   }
 
   // Fanfare and confetti cannons for beating your own best score
@@ -1210,6 +1257,11 @@ class Game {
   renderGame() {
     const ctx = this.ctx;
     const W = this.canvasWidth;
+
+    // Reward effects sit behind the pipes: they frame the action and can never
+    // cover an answer bubble or the question.
+    this.effects.render(ctx);
+    this.confetti.render(ctx);
 
     this.pipes.forEach(pipe => pipe.render(ctx));
     this.bird.render(ctx);
