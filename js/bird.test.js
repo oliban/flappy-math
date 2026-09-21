@@ -150,9 +150,29 @@ describe('Bird hurt blink', () => {
     expect(bird.redTint()).toBe(0);
   });
 
-  test('a pipe hit uses the same red blink, so both hurts look alike', () => {
+  test('a harmless bounce (edge nudge) does not blink red', () => {
     const bird = createBird();
     bird.bounce();
+    expect(bird.isBlinkingRed()).toBe(false);
+    expect(bird.canBeHurt()).toBe(false); // still shielded briefly
+  });
+
+  test('losing a life to the floor blinks red, a shielded floor touch does not', () => {
+    const bird = createBird();
+    bird.y = GROUND_Y;
+    expect(bird.hitFloor()).toBe(true);
+    expect(bird.isBlinkingRed()).toBe(true);
+    const other = createBird();
+    other.bounce();              // shielded
+    other.y = GROUND_Y;
+    expect(other.hitFloor()).toBe(false);
+    expect(other.isBlinkingRed()).toBe(false);
+  });
+
+  test('a life-losing hit uses the same red blink as a wrong answer', () => {
+    const bird = createBird();
+    bird.bounce();
+    bird.hurtFlash();
     expect(bird.isBlinkingRed()).toBe(true);
     expect(bird.canBeHurt()).toBe(false); // pipe hits still grant the invulnerability window
   });
@@ -160,6 +180,7 @@ describe('Bird hurt blink', () => {
   test('a wrong answer during a pipe-hit blink never shortens it', () => {
     const bird = createBird();
     bird.bounce();
+    bird.hurtFlash();
     for (let i = 0; i < 10; i++) bird.update();
     const left = bird.flashTimer;
     bird.hurtFlash(5);

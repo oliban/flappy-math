@@ -52,3 +52,24 @@ describe('Pipe', () => {
     expect(pipe.passed).toBe(true);
   });
 });
+
+describe('answer bubble feedback', () => {
+  test('a wrong answer fades the bubble out instead of exploding it', () => {
+    const pipe = createPipe([6, 7, 8], 800);
+    pipe.markGapHit(7, false);
+    const gap = pipe.gaps.find(g => g.answer === 7);
+    expect(gap.hitResult).toBe('wrong');
+    expect(gap.explosionParticles).toBeUndefined();
+    const before = gap.fadeOpacity;
+    pipe.update(1);
+    expect(gap.fadeOpacity).toBeLessThan(before);
+  });
+
+  test('a correct answer also fades its bubble', () => {
+    const pipe = createPipe([6, 7, 8], 800);
+    pipe.markGapHit(6, true);
+    const gap = pipe.gaps.find(g => g.answer === 6);
+    pipe.update(1);
+    expect(gap.fadeOpacity).toBeLessThan(1);
+  });
+});

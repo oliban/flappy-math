@@ -83,12 +83,12 @@ export function createBird() {
       } else if (direction === 'down') {
         this.velocity = 2.2;
       }
-      this.bounceTimer = HURT_FLASH_FRAMES;
-      this.hurtFlash();
+      this.bounceTimer = HURT_FLASH_FRAMES; // brief shield; no blink by itself
     },
 
-    // Blink the avatar red. Used by wrong answers (no bounce, no shield) and by
-    // pipe hits; the longer of two overlapping blinks wins so they read as one.
+    // Blink the avatar red. Only when a life is lost (wrong answer, head-on pipe,
+    // floor/ceiling): harmless edge bounces stay silent so the blink never
+    // competes with the correct-answer rewards.
     hurtFlash(frames = HURT_FLASH_FRAMES) {
       this.flashTimer = Math.max(this.flashTimer, frames);
       this.isHurt = true;
@@ -112,6 +112,7 @@ export function createBird() {
       const hurt = this.canBeHurt();
       if (hurt) {
         this.bounce('up');
+        this.hurtFlash();
       } else {
         this.velocity = Math.min(this.velocity, -2.2);
       }
@@ -123,6 +124,7 @@ export function createBird() {
       const hurt = this.canBeHurt();
       if (hurt) {
         this.bounce('down');
+        this.hurtFlash();
       } else {
         this.velocity = Math.max(this.velocity, 2.2);
       }

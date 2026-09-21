@@ -22,7 +22,7 @@ import { createEffects, tierForStreak, tierSpec } from './effects.js';
 import { getTableMascot } from './mascots.js';
 import { createWeatherClient } from './weather.js';
 import { createGlobalScores } from './globalScores.js';
-import { getDailyTable, formatTimeUntilNextDay } from './weekly.js';
+import { getDailyTable } from './weekly.js';
 import { createRun, MODES } from './run.js';
 import { createBackground } from './background.js';
 import { createProfileUI } from './profile-ui.js';
@@ -688,6 +688,7 @@ class Game {
           this.bird.bounce();
           if (!pipe.damagedPlayer) {
             pipe.damagedPlayer = true;
+            this.bird.hurtFlash();
             this.loseLife();
           }
         }
@@ -1152,9 +1153,6 @@ class Game {
     ctx.fillStyle = COLORS.inkSoft;
     ctx.font = font(16, '600');
     ctx.fillText(t('weeklyHint'), cx, cardY + 218);
-    ctx.fillStyle = COLORS.secondary;
-    ctx.font = font(13, '700');
-    ctx.fillText(`⏳ ${t('newTableIn')} ${formatTimeUntilNextDay()}`, cx, cardY + 238);
 
     // Play button
     const btnW = 240;

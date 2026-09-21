@@ -99,20 +99,6 @@ function ensureSprites() {
   if (!sprites) buildSprites();
 }
 
-// Particle object pool (reuse particles to avoid allocation)
-const particlePool = [];
-const POOL_SIZE = 100;
-
-function getParticle() {
-  return particlePool.pop() || { x: 0, y: 0, vx: 0, vy: 0, size: 0, color: '', life: 0 };
-}
-
-function releaseParticle(p) {
-  if (particlePool.length < POOL_SIZE) {
-    particlePool.push(p);
-  }
-}
-
 export function createPipe(answers, canvasWidth) {
   // Distribute 3 gaps evenly across screen height
   const gapSpacing = BASE_HEIGHT / 4;
@@ -123,7 +109,6 @@ export function createPipe(answers, canvasWidth) {
     height: PIPE_GAP_HEIGHT,
     hit: false,
     hitResult: null, // 'correct' or 'wrong'
-    explosionParticles: [],
     fadeOpacity: 1
   }));
 
@@ -137,27 +122,10 @@ export function createPipe(answers, canvasWidth) {
     update(speed) {
       this.x -= speed;
 
-      // Update gap animations
+      // Hit bubbles fade out: correct quickly, wrong a little slower (tinted red while it goes)
       this.gaps.forEach(gap => {
         if (gap.hit) {
-          if (gap.hitResult === 'correct') {
-            // Fade out correct answer
-            gap.fadeOpacity = Math.max(0, gap.fadeOpacity - 0.15);
-          } else if (gap.hitResult === 'wrong') {
-            // Update explosion particles (in-place removal, return to pool)
-            for (let i = gap.explosionParticles.length - 1; i >= 0; i--) {
-              const p = gap.explosionParticles[i];
-              p.x += p.vx;
-              p.y += p.vy;
-              p.vy += 0.3; // gravity
-              p.life -= 0.03;
-              p.size *= 0.96;
-              if (p.life <= 0) {
-                releaseParticle(p);
-                gap.explosionParticles.splice(i, 1);
-              }
-            }
-          }
+          gap.fadeOpacity = Math.max(0, gap.fadeOpacity - (gap.hitResult === 'correct' ? 0.15 : 0.06));
         }
       });
     },
@@ -167,25 +135,6 @@ export function createPipe(answers, canvasWidth) {
       if (gap) {
         gap.hit = true;
         gap.hitResult = isCorrect ? 'correct' : 'wrong';
-
-        if (!isCorrect) {
-          // Create explosion particles from pool
-          const bubbleX = this.x + this.width / 2;
-          const colors = ['#FF4444', '#FF6644', '#FFAA44', '#FFDD44', '#FF8844'];
-          for (let i = 0; i < 20; i++) {
-            const angle = (Math.PI * 2 * i) / 20 + Math.random() * 0.3;
-            const speed = 3 + Math.random() * 4;
-            const p = getParticle();
-            p.x = bubbleX;
-            p.y = gap.y;
-            p.vx = Math.cos(angle) * speed;
-            p.vy = Math.sin(angle) * speed - 2;
-            p.size = 6 + Math.random() * 6;
-            p.color = colors[Math.floor(Math.random() * colors.length)];
-            p.life = 1;
-            gap.explosionParticles.push(p);
-          }
-        }
       }
     },
 
@@ -252,36 +201,20 @@ export function createPipe(answers, canvasWidth) {
     },
 
     drawAnswerBubble(ctx, pipeX, gap) {
-      // Don't render if correct answer has faded out
-      if (gap.hit && gap.hitResult === 'correct' && gap.fadeOpacity <= 0) {
-        return;
-      }
-
-      // Render explosion particles for wrong answers
-      if (gap.hit && gap.hitResult === 'wrong') {
-        const particles = gap.explosionParticles;
-        for (let i = 0; i < particles.length; i++) {
-          const p = particles[i];
-          ctx.globalAlpha = p.life;
-          ctx.fillStyle = p.color;
-          ctx.beginPath();
-          ctx.arc(Math.round(p.x), Math.round(p.y), p.size, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-        // Don't draw bubble after explosion starts
-        return;
-      }
+      // Hit bubbles fade away; nothing left to draw once transparent
+      if (gap.hit && gap.fadeOpacity <= 0) return;
 
       const bubbleX = Math.round(pipeX + this.width / 2 - BUBBLE_W / 2);
       const bubbleY = Math.round(gap.y - BUBBLE_H / 2);
 
-      // Apply fade for correct answers
-      if (gap.hit && gap.hitResult === 'correct') {
-        ctx.globalAlpha = gap.fadeOpacity;
-      }
-
+      if (gap.hit) ctx.globalAlpha = gap.fadeOpacity;
       ctx.drawImage(sprites.bubble, bubbleX - 1, bubbleY - 1);
+      if (gap.hit && gap.hitResult === 'wrong') {
+        // Red wash marks the wrong choice while the bubble fades
+        ctx.fillStyle = 'rgba(239, 90, 90, 0.55)';
+        roundRectPath(ctx, bubbleX, bubbleY, BUBBLE_W, BUBBLE_H, 14);
+        ctx.fill();
+      }
 
       // Answer text
       ctx.fillStyle = '#1F2A44';
