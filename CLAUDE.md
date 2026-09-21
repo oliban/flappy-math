@@ -40,6 +40,7 @@ Flappy Math is an HTML5 Canvas game for practicing multiplication tables.
 - `js/background.js` - Parallax sky, clouds, hills, weather effects
 - `js/weather.js` / `server/weather.js` - Weather client and location-aware weather service
 - `js/mascots.js` - Mascot animal + memory hook per multiplication table
+- `js/character-names.js` - Swedish character names (translates the generated name parts; hand-written for starters and heroes). Always show names via `characterName(avatar, lang)`
 - `js/bird.js` - Bird physics (gravity, flap)
 - `js/pipe.js` - Pipes with 3 answer gaps
 - `js/math.js` - Problem generation (correct + plausible wrong answers)

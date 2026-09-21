@@ -21,6 +21,7 @@ import { createConfetti } from './confetti.js';
 import { createEffects, tierForStreak, tierSpec } from './effects.js';
 import { getTableMascot } from './mascots.js';
 import { createWeatherClient } from './weather.js';
+import { characterName } from './character-names.js';
 import { createGlobalScores } from './globalScores.js';
 import { getDailyTable } from './weekly.js';
 import { createRun, MODES } from './run.js';
@@ -1443,7 +1444,7 @@ class Game {
       });
 
       if (this.unlockedThisRun) {
-        const name = Avatars.getAvatar(this.unlockedThisRun).name;
+        const name = characterName(Avatars.getAvatar(this.unlockedThisRun), getLanguage());
         const bx = cardX + cardW - 60;
         const badge = { x: bx - 56, y: cardY + 30, width: 112, height: 96 };
         const isCurrent = this.unlockedThisRun === this.profile.getAvatarId();
@@ -1668,7 +1669,7 @@ class Game {
     const W = this.canvasWidth;
     const remaining = this.toast.until - now;
     const slide = Math.min(1, remaining / 400, (this.toast.duration - remaining) / 400);
-    const name = Avatars.getAvatar(this.toast.avatarId).name;
+    const name = characterName(Avatars.getAvatar(this.toast.avatarId), getLanguage());
     const selectable = this.toast.selectable && this.toast.avatarId !== this.profile.getAvatarId();
     const toastW = 340;
     const toastH = selectable ? 80 : 64;
@@ -1775,7 +1776,7 @@ class Game {
     ctx.textAlign = 'center';
     ctx.fillStyle = COLORS.ink;
     ctx.font = font(16, '700');
-    ctx.fillText(`${t('selectedCharacter')}: ${sel.name}`, cx, cardY + cardH - 46);
+    ctx.fillText(`${t('selectedCharacter')}: ${characterName(sel, getLanguage())}`, cx, cardY + cardH - 46);
     ctx.fillStyle = COLORS.inkSoft;
     ctx.font = font(12, '600');
     ctx.fillText(`${t('weeklyDropHint')}  •  ${t('highscoreUnlockHint')}`, cx, cardY + cardH - 22);

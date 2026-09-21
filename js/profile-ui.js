@@ -1,7 +1,8 @@
 // Controls the HTML profile overlay (name + avatar picker).
 
 import { AVATARS, drawAvatar } from './avatars.js';
-import { t } from './i18n.js';
+import { t, getLanguage } from './i18n.js';
+import { characterName } from './character-names.js';
 
 export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => true }) {
   const overlay = document.getElementById('profile-overlay');
@@ -35,9 +36,7 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
       drawAvatar(pctx, avatar.id, 24, 0.6);
       const label = document.createElement('span');
       label.className = 'avatar-label';
-      const key = `avatar_${avatar.id}`;
-      const translated = t(key);
-      const displayName = translated === key ? avatar.name : translated;
+      const displayName = characterName(avatar, getLanguage());
       label.textContent = displayName;
       btn.title = displayName;
       avatar.displayName = displayName;
