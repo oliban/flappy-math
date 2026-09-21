@@ -1,7 +1,14 @@
 import { GRAVITY, FLAP_VELOCITY, BIRD_X, BIRD_SIZE, BASE_HEIGHT, GROUND_Y } from './constants.js';
 
 import { getAvatar, DEFAULT_AVATAR_ID } from './avatars.js';
-import { drawAvatarSprite } from './avatar-sprites.js';
+import { drawAvatarSprite, drawAvatarSpriteTint } from './avatar-sprites.js';
+
+// One hurt look for the whole game: the avatar blinks red. A wrong answer sets
+// it off without touching the bird's flight, a pipe hit sets it off along with
+// the bounce and the invulnerability window, so the two never fight.
+export const HURT_FLASH_FRAMES = 30;   // 0.5 s - over long before the next pipe
+const BLINK_PERIOD = 5;                // frames per on/off half-pulse -> 3 blinks
+const TINT_STRENGTH = 0.72;            // unmistakably red, but the eyes and shape still read
 
 export function createBird() {
   const initialY = BASE_HEIGHT / 2;
@@ -15,6 +22,7 @@ export function createBird() {
     targetRotation: 0,
     wingPhase: 0,
     bounceTimer: 0,
+    flashTimer: 0,
     isHurt: false,
     avatarId: DEFAULT_AVATAR_ID,
 
@@ -28,10 +36,13 @@ export function createBird() {
       this.velocity += GRAVITY;
       this.y += this.velocity;
 
-      // Update bounce timer
+      // Update bounce timer (invulnerability) and the red hurt blink
       if (this.bounceTimer > 0) {
         this.bounceTimer--;
-        if (this.bounceTimer === 0) {
+      }
+      if (this.flashTimer > 0) {
+        this.flashTimer--;
+        if (this.flashTimer === 0) {
           this.isHurt = false;
         }
       }
@@ -72,8 +83,26 @@ export function createBird() {
       } else if (direction === 'down') {
         this.velocity = 2.2;
       }
-      this.bounceTimer = 30;
+      this.bounceTimer = HURT_FLASH_FRAMES;
+      this.hurtFlash();
+    },
+
+    // Blink the avatar red. Used by wrong answers (no bounce, no shield) and by
+    // pipe hits; the longer of two overlapping blinks wins so they read as one.
+    hurtFlash(frames = HURT_FLASH_FRAMES) {
+      this.flashTimer = Math.max(this.flashTimer, frames);
       this.isHurt = true;
+    },
+
+    isBlinkingRed() {
+      // Blocks of BLINK_PERIOD frames, starting lit: on-off-on-off-on-off
+      return this.flashTimer > 0 &&
+        Math.floor((this.flashTimer - 1) / BLINK_PERIOD) % 2 === 1;
+    },
+
+    // How much red to lay over the avatar this frame (0 = none)
+    redTint() {
+      return this.isBlinkingRed() ? TINT_STRENGTH : 0;
     },
 
     // Floor/ceiling contact: always push away so the bird can never get pinned.
@@ -119,6 +148,7 @@ export function createBird() {
       this.targetRotation = 0;
       this.wingPhase = 0;
       this.bounceTimer = 0;
+      this.flashTimer = 0;
       this.isHurt = false;
     },
 
@@ -127,12 +157,13 @@ export function createBird() {
       ctx.translate(this.x, this.y);
       ctx.rotate(this.rotation);
 
-      // Flash when hurt
-      if (this.isHurt && Math.floor(this.bounceTimer / 4) % 2 === 0) {
-        ctx.globalAlpha = 0.5;
-      }
-
       drawAvatarSprite(ctx, this.avatarId, this.size / 2, this.wingPhase);
+
+      // Hurt blink: a red wash over the avatar's own pixels
+      const tint = this.redTint();
+      if (tint > 0) {
+        drawAvatarSpriteTint(ctx, this.avatarId, this.size / 2, this.wingPhase, tint);
+      }
 
       ctx.restore();
     }
