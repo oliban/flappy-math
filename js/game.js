@@ -23,7 +23,7 @@ import { getTableMascot } from './mascots.js';
 import { createWeatherClient } from './weather.js';
 import { characterName } from './character-names.js';
 import { createGlobalScores } from './globalScores.js';
-import { getDailyTable } from './weekly.js';
+import { getDailyTable, SCORED_TABLES } from './weekly.js';
 import { createRun, MODES } from './run.js';
 import { createBackground } from './background.js';
 import { createProfileUI } from './profile-ui.js';
@@ -1545,8 +1545,8 @@ class Game {
 
     // Table filter: ◀ 6× ▶ with "all tables" at the end of the cycle
     const filterY = cardY + 54;
-    const options = [null];
-    for (let tbl = MIN_TABLE; tbl <= MAX_TABLE; tbl++) options.push(tbl);
+    // 1x is absent on purpose: no mode that records scores ever plays it
+    const options = [null, ...SCORED_TABLES];
     const step = (dir) => {
       const i = options.indexOf(this.highscoreTable);
       this.highscoreTable = options[(i + dir + options.length) % options.length];
