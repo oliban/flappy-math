@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { createProgress } from './progress.js';
+import { MIN_TABLE, MAX_TABLE } from './constants.js';
 
 describe('Progress', () => {
   let progress;
@@ -9,9 +10,14 @@ describe('Progress', () => {
   });
 
   test('all tables start at speed 0 (not mastered)', () => {
-    for (let table = 1; table <= 12; table++) {
+    for (let table = MIN_TABLE; table <= MAX_TABLE; table++) {
       expect(progress.getBestSpeed(table)).toBe(0);
     }
+  });
+
+  test('1x is not a playable table', () => {
+    expect(MIN_TABLE).toBe(2);
+    expect(Object.keys(progress.getAllProgress())).not.toContain('1');
   });
 
   test('can update best speed for a table', () => {

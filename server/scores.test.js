@@ -7,6 +7,7 @@ import {
   parseStore,
   MAX_ENTRIES_PER_TABLE
 } from './scores.js';
+import { MIN_TABLE, MAX_TABLE } from '../js/constants.js';
 
 function run(overrides = {}) {
   return { name: 'Ada', score: 10, table: 4, speed: 2, streak: 5, ...overrides };
@@ -48,10 +49,14 @@ describe('validateEntry', () => {
     expect(validateEntry(run({ table: 'four' })).error).toBe('invalid-table');
   });
 
-  test('accepts the whole playable range, including the 1x table', () => {
-    for (let table = 1; table <= 12; table++) {
+  test('accepts the whole playable range, 2x to 12x', () => {
+    for (let table = MIN_TABLE; table <= MAX_TABLE; table++) {
       expect(validateEntry(run({ table })).valid).toBe(true);
     }
+  });
+
+  test('rejects 1x, which no mode plays any more', () => {
+    expect(validateEntry(run({ table: 1 })).error).toBe('invalid-table');
   });
 
   test('rejects an out-of-range speed', () => {
