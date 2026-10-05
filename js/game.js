@@ -65,7 +65,9 @@ class Game {
     this.effects = createEffects();   // per-answer reward effects during play
     this.weather = null;
     this.weatherClient = createWeatherClient({ override: new URLSearchParams(window.location.search).get('weather') });
-    this.locationChoice = this.readLocationChoice(); // 'granted' | 'denied' | null
+    // Coordinates the player opted into earlier, if any. Restored rather than
+    // re-requested, so loading the page never triggers a permission prompt.
+    this.coords = this.readSavedCoords();
     this.showLocationCard = false;
     this.globalScores = createGlobalScores();
     this.global = { status: 'idle', entries: [], fetchedAt: 0 }; // shared leaderboard cache
@@ -119,7 +121,6 @@ class Game {
     this.preloadAllVoiceAudio();
     this.refreshWeather();
     setInterval(() => this.refreshWeather(), 10 * 60 * 1000);
-    if (this.locationChoice === 'granted') this.requestPosition();
 
     if (document.fonts && document.fonts.load) {
       document.fonts.load("700 20px 'Fredoka'").catch(() => {});
@@ -247,13 +248,34 @@ class Game {
     });
   }
 
-  readLocationChoice() {
-    try { return localStorage.getItem('flappy-math-location'); } catch (e) { return null; }
+  // Remembers the place the player chose, not the answer they gave: the stored
+  // coordinates are enough to keep showing their weather without ever asking
+  // the browser again. Older saves held the plain string 'granted'/'denied',
+  // which carries no position, so they fall back to Mölndal until the player
+  // opts in again - deliberately, since the whole point is not to ask.
+  readSavedCoords() {
+    try {
+      const raw = localStorage.getItem('flappy-math-location');
+      if (!raw || raw[0] !== '{') return null;
+
+      const saved = JSON.parse(raw);
+      const lat = Number(saved.lat);
+      const lon = Number(saved.lon);
+      if (!Number.isFinite(lat) || Math.abs(lat) > 90) return null;
+      if (!Number.isFinite(lon) || Math.abs(lon) > 180) return null;
+
+      return { lat, lon };
+    } catch (e) {
+      return null;
+    }
   }
 
-  saveLocationChoice(choice) {
-    this.locationChoice = choice;
-    try { localStorage.setItem('flappy-math-location', choice); } catch (e) { /* ignore */ }
+  saveCoords(coords) {
+    this.coords = coords;
+    try {
+      if (coords) localStorage.setItem('flappy-math-location', JSON.stringify(coords));
+      else localStorage.removeItem('flappy-math-location');
+    } catch (e) { /* ignore */ }
   }
 
   // Ask the browser for a position (the browser shows its own permission prompt).
@@ -263,7 +285,9 @@ class Game {
     console.info('[weather] asking the browser for the position…');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        this.coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        // Rounded to ~1 km before it is stored or sent anywhere
+        const round = (v) => Math.round(Number(v) * 100) / 100;
+        this.saveCoords({ lat: round(pos.coords.latitude), lon: round(pos.coords.longitude) });
         console.info(`[weather] position received (±${Math.round(pos.coords.accuracy)} m); refreshing weather with rounded coordinates`);
         this.refreshWeather();
       },
@@ -274,8 +298,7 @@ class Game {
 
   // Back to the default: forget the player's coordinates and refetch Mölndal.
   useDefaultLocation() {
-    this.saveLocationChoice('denied');
-    this.coords = null;
+    this.saveCoords(null);
     console.info('[weather] using Mölndal weather');
     this.refreshWeather();
   }
@@ -303,14 +326,14 @@ class Game {
     ctx.fillText(t('locationBody2'), cx, cardY + 148);
     const btnY = cardY + cardH - 52 - 18;
     const yes = drawButton(ctx, cx - 240, btnY, 230, 52, t('locationYes'), { fontSize: 17, icon: '✅' });
-    this.hitAreas.add(yes, () => { this.showLocationCard = false; this.saveLocationChoice('granted'); this.requestPosition(); });
+    this.hitAreas.add(yes, () => { this.showLocationCard = false; this.requestPosition(); });
     const no = drawButton(ctx, cx + 10, btnY, 230, 52, t('locationNo'),
       { color: COLORS.muted, dark: COLORS.mutedBorder, textColor: COLORS.inkSoft, fontSize: 17 });
     this.hitAreas.add(no, () => { this.showLocationCard = false; this.useDefaultLocation(); });
     // Swallow clicks on the rest of the screen while the card is up
     this.hitAreas.add({ x: 0, y: 0, width: W, height: this.canvasHeight }, () => {});
     // Re-add the buttons on top so they win the hit test
-    this.hitAreas.add(yes, () => { this.showLocationCard = false; this.saveLocationChoice('granted'); this.requestPosition(); });
+    this.hitAreas.add(yes, () => { this.showLocationCard = false; this.requestPosition(); });
     this.hitAreas.add(no, () => { this.showLocationCard = false; this.useDefaultLocation(); });
   }
 
