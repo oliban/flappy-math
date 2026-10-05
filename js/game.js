@@ -23,7 +23,7 @@ import { getTableMascot } from './mascots.js';
 import { createWeatherClient } from './weather.js';
 import { characterName } from './character-names.js';
 import { createGlobalScores } from './globalScores.js';
-import { getDailyTable } from './weekly.js';
+import { getDailyTable, SCORED_TABLES } from './weekly.js';
 import { createRun, MODES } from './run.js';
 import { createBackground } from './background.js';
 import { createProfileUI } from './profile-ui.js';
@@ -433,7 +433,7 @@ class Game {
 
       if (state === STATES.MENU && this.menuView === 'practice') {
         const num = parseInt(e.key);
-        if (num >= 1 && num <= 9) this.selectedTable = num;
+        if (num >= MIN_TABLE && num <= 9) this.selectedTable = num;
         if (e.key === '0') this.selectedTable = 10;
         if (e.key === '-') this.selectedTable = 11;
         if (e.key === '=') this.selectedTable = 12;
@@ -1210,7 +1210,11 @@ class Game {
       const table = MIN_TABLE + i;
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = gridX + col * (cellW + gap);
+      // A last row that does not fill the width is centred, so dropping 1x
+      // leaves a tidy grid rather than a gap on the right
+      const inRow = Math.min(cols, tableCount - row * cols);
+      const rowOffset = ((cols - inRow) * (cellW + gap)) / 2;
+      const x = gridX + rowOffset + col * (cellW + gap);
       const y = gridY + row * (cellH + gap);
       const best = this.progress.getBestSpeed(table);
       const selected = table === this.selectedTable;
@@ -1545,8 +1549,8 @@ class Game {
 
     // Table filter: ◀ 6× ▶ with "all tables" at the end of the cycle
     const filterY = cardY + 54;
-    const options = [null];
-    for (let tbl = MIN_TABLE; tbl <= MAX_TABLE; tbl++) options.push(tbl);
+    // 1x is absent on purpose: no mode that records scores ever plays it
+    const options = [null, ...SCORED_TABLES];
     const step = (dir) => {
       const i = options.indexOf(this.highscoreTable);
       this.highscoreTable = options[(i + dir + options.length) % options.length];

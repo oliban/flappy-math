@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { getISOWeek, getWeeklyTable, daysUntilNextTable, getDailyTable, formatTimeUntilNextDay } from './weekly.js';
+import { getISOWeek, getWeeklyTable, daysUntilNextTable, getDailyTable, formatTimeUntilNextDay, SCORED_TABLES } from './weekly.js';
 
 describe('ISO week number', () => {
   test('Jan 1 2026 (Thursday) is week 1', () => {
@@ -79,5 +79,21 @@ describe('daily table', () => {
   test('formats the time until midnight as hours and minutes', () => {
     expect(formatTimeUntilNextDay(new Date(2026, 8, 17, 18, 30))).toBe('5h 30m');
     expect(formatTimeUntilNextDay(new Date(2026, 8, 17, 23, 41))).toBe('19m');
+  });
+});
+
+describe('tables a leaderboard can hold', () => {
+  test('1x is not one of them: no scoring mode ever plays it', () => {
+    expect(SCORED_TABLES).not.toContain(1);
+  });
+
+  test('covers 2x through 12x in order', () => {
+    expect(SCORED_TABLES).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  test('every table of the day has a list to land in', () => {
+    for (let d = 0; d < 400; d++) {
+      expect(SCORED_TABLES).toContain(getDailyTable(new Date(2026, 0, 1 + d)));
+    }
   });
 });
