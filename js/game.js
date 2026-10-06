@@ -1313,7 +1313,9 @@ class Game {
     // Left HUD: player + score (avatar drawn live on top for its idle animation)
     const hudX = 14;
     const hudY = 14;
-    const hudW = 190;
+    ctx.font = font(17, '600');
+    const nameW = ctx.measureText(this.profile.getName()).width;
+    const hudW = Math.max(190, Math.ceil(58 + nameW + 16));
     const hudH = 84;
     const mainValue = isDaily ? String(this.scoring.score) : `${this.scoring.streak}/10`;
     const leftKey = `${this.profile.getName()}|${isDaily}|${mainValue}|${getLanguage()}`;

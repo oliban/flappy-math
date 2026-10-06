@@ -1,7 +1,7 @@
 import { AVATARS, DEFAULT_AVATAR_ID } from './avatars.js';
 
 const PLAYER_STORAGE_KEY = 'flappy-math-player';
-export const MAX_NAME_LENGTH = 12;
+export const MAX_NAME_LENGTH = 20;
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;

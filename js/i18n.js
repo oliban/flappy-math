@@ -28,6 +28,9 @@ const translations = {
     whoIsPlaying: 'Who is playing?',
     yourName: 'Your name',
     namePlaceholder: 'Type your name',
+    lettersLeft: '{n} letters left',
+    letterLeft: '1 letter left',
+    nameFull: "That's as long as it gets! 😊",
     pickAvatar: 'Choose your character',
     letsGo: "Let's go!",
 
@@ -136,6 +139,9 @@ const translations = {
     whoIsPlaying: 'Vem spelar?',
     yourName: 'Ditt namn',
     namePlaceholder: 'Skriv ditt namn',
+    lettersLeft: '{n} bokstäver kvar',
+    letterLeft: '1 bokstav kvar',
+    nameFull: 'Nu är namnet fullt! 😊',
     pickAvatar: 'Välj din figur',
     letsGo: 'Kör!',
 

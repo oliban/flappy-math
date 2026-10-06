@@ -1,6 +1,7 @@
 // Controls the HTML profile overlay (name + avatar picker).
 
 import { AVATARS, drawAvatar } from './avatars.js';
+import { MAX_NAME_LENGTH } from './player.js';
 import { t, getLanguage } from './i18n.js';
 import { characterName } from './character-names.js';
 
@@ -11,6 +12,8 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
   const grid = document.getElementById('avatar-grid');
   const backBtn = document.getElementById('profile-back');
   const selectedName = document.getElementById('avatar-selected-name');
+  const nameCount = document.getElementById('profile-name-count');
+  nameInput.maxLength = MAX_NAME_LENGTH;
   const submitBtn = document.getElementById('profile-submit');
 
   let selectedAvatar = profile.getAvatarId();
@@ -69,6 +72,11 @@ export function createProfileUI(profile, { onDone, onBack, isUnlocked = () => tr
 
   function updateSubmit() {
     submitBtn.disabled = nameInput.value.trim().length === 0;
+    // Kid-friendly limit hint: silent until the name is close to the cap
+    const left = MAX_NAME_LENGTH - nameInput.value.length;
+    const HINT_FROM = 5;
+    nameCount.textContent = left > HINT_FROM ? '' : left <= 0 ? t('nameFull') : left === 1 ? t('letterLeft') : t('lettersLeft').replace('{n}', String(left));
+    nameCount.classList.toggle('at-limit', left <= 0);
   }
 
   nameInput.addEventListener('input', updateSubmit);

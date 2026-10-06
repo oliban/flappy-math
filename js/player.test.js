@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { createPlayerProfile, sanitizeName } from './player.js';
+import { createPlayerProfile, sanitizeName, MAX_NAME_LENGTH } from './player.js';
 
 function mockStorage() {
   const data = {};
@@ -28,10 +28,11 @@ describe('player profile', () => {
     expect(p.hasName()).toBe(true);
   });
 
-  test('caps the name at 12 characters', () => {
+  test('caps the name at 20 characters', () => {
     const p = createPlayerProfile(storage);
-    p.setName('ABCDEFGHIJKLMNOP');
-    expect(p.getName()).toBe('ABCDEFGHIJKL');
+    p.setName('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    expect(p.getName()).toBe('ABCDEFGHIJKLMNOPQRST');
+    expect(MAX_NAME_LENGTH).toBe(20);
   });
 
   test('stores a chosen avatar and rejects unknown ones', () => {
@@ -63,8 +64,8 @@ describe('sanitizeName', () => {
   test('strips control characters and collapses whitespace', () => {
     expect(sanitizeName('  Ell\u0007a   Bo\u001Fb ')).toBe('Ella Bob');
   });
-  test('caps at 12 characters and trims again', () => {
-    expect(sanitizeName('ABCDEFGHIJK LMNOP')).toBe('ABCDEFGHIJK');
+  test('caps at 20 characters and trims again', () => {
+    expect(sanitizeName('ABCDEFGHIJKLMNOPQRS TUVWXYZ')).toBe('ABCDEFGHIJKLMNOPQRS');
   });
   test('non-strings become empty', () => {
     expect(sanitizeName(null)).toBe('');

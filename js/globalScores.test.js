@@ -108,7 +108,7 @@ describe('GlobalScores', () => {
       }));
 
       const result = await clientWith(fetchFn).fetchTop();
-      expect(result.entries[0].name).toBe('Very long pl');
+      expect(result.entries[0].name).toBe('Very long player nam');
     });
 
     test('replaces a missing name with a placeholder', async () => {
