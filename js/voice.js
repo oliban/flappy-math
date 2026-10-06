@@ -2,10 +2,10 @@ import { createAudioEngine } from './audio-engine.js';
 
 const VOICE_STORAGE_KEY = 'flappy-math-voice';
 
-export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fetchFn } = {}) {
+export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fetchFn, retryDelayMs } = {}) {
   const _storage = storage !== undefined ? storage : (typeof localStorage !== 'undefined' ? localStorage : null);
   const _Audio = AudioClass !== undefined ? AudioClass : (typeof Audio !== 'undefined' ? Audio : null);
-  const engine = createAudioEngine({ audioContextFactory, fetchFn });
+  const engine = createAudioEngine({ audioContextFactory, fetchFn, retryDelayMs });
 
   let enabled = true;
   let currentLang = 'en';
@@ -41,8 +41,15 @@ export function createVoicePlayer(storage, AudioClass, { audioContextFactory, fe
     engine.resume();
     Promise.all(paths.map(p => engine.load(p))).then(buffers => {
       if (id !== loadId) return; // superseded while loading; the newer one owns the phase
-      const clips = buffers.filter(Boolean);
-      if (clips.length === 0) { finished(); return; }
+      if (buffers.some(b => !b)) {
+        // Never speak half a sentence ("… gånger …"): if any clip is missing,
+        // say the whole thing through plain <audio> elements instead.
+        const missing = paths.filter((p, i) => !buffers[i]);
+        console.warn('[voice] clip(s) unavailable via Web Audio, using <audio> fallback:', missing.join(', '));
+        if (_Audio) { runElements(paths); } else { finished(); }
+        return;
+      }
+      const clips = buffers;
       phase = 'playing';
       let when = engine.now();
       let last = null;

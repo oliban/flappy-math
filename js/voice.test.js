@@ -19,6 +19,8 @@ function mockWebAudio() {
   return { ctx, fetchFn, started, fetched, factory: () => ctx };
 }
 
+function mockStorage() { return { getItem: vi.fn(), setItem: vi.fn() }; }
+
 function MockAudioClass() {
   const instances = [];
   const Cls = class {
@@ -184,5 +186,27 @@ describe('Voice Player', () => {
       const p = createVoicePlayer(mockStorage, null, { audioContextFactory: null });
       expect(() => { p.speakQuestion(1, 2); p.preload([1]); }).not.toThrow();
     });
+  });
+});
+
+describe('resilience when a clip cannot be decoded', () => {
+  test('falls back to <audio> elements for the whole sentence rather than dropping the numbers', async () => {
+    // Web Audio available, but the "6" clip never loads
+    const failing = mockWebAudio();
+    const badFetch = vi.fn(async (url) => {
+      if (url.includes('num_6')) throw new TypeError('Load failed');
+      return { ok: true, arrayBuffer: async () => ({ name: url }) };
+    });
+    const { Cls, instances } = MockAudioClass();
+    const p = createVoicePlayer(mockStorage(), Cls, { audioContextFactory: failing.factory, fetchFn: badFetch, retryDelayMs: 1 });
+    p.speakQuestion(6, 7);
+    await flush(30);
+    // nothing partial through Web Audio...
+    expect(failing.started.length).toBe(0);
+    // ...the full sentence went through the element chain instead
+    const srcs = instances.map(a => a.src);
+    expect(srcs).toContain('sounds/numbers/en/en_num_6.mp3');
+    expect(srcs).toContain('sounds/numbers/en/en_times.mp3');
+    expect(srcs).toContain('sounds/numbers/en/en_num_7.mp3');
   });
 });

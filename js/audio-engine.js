@@ -12,7 +12,9 @@ export function defaultAudioContextFactory() {
   return sharedContext;
 }
 
-export function createAudioEngine({ audioContextFactory = defaultAudioContextFactory, fetchFn } = {}) {
+const LOAD_ATTEMPTS = 3;
+
+export function createAudioEngine({ audioContextFactory = defaultAudioContextFactory, fetchFn, retryDelayMs = 250 } = {}) {
   const _fetch = fetchFn || (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : null);
   let ctx = null;
   let failed = false;
@@ -55,17 +57,34 @@ export function createAudioEngine({ audioContextFactory = defaultAudioContextFac
       return buffers.get(url) || null;
     },
 
-    // Fetch + decode once; concurrent callers share the promise
+    // Fetch + decode once; concurrent callers share the promise. Mobile Safari
+    // drops fetches ("Load failed") and occasionally rejects a decode while many
+    // clips load at once, so each clip gets a few attempts before we give up.
     load(url) {
       const c = context();
       if (!c) return Promise.resolve(null);
       if (buffers.has(url)) return Promise.resolve(buffers.get(url));
       if (pending.has(url)) return pending.get(url);
-      const p = _fetch(url)
-        .then(res => (res && res.ok ? res.arrayBuffer() : Promise.reject(new Error(`HTTP ${res && res.status}`))))
-        .then(data => c.decodeAudioData(data))
-        .then(buffer => { buffers.set(url, buffer); pending.delete(url); return buffer; })
-        .catch(() => { pending.delete(url); return null; });
+      const attempt = async (n) => {
+        try {
+          const res = await _fetch(url);
+          if (!res || !res.ok) throw new Error(`HTTP ${res && res.status}`);
+          const data = await res.arrayBuffer();
+          return await c.decodeAudioData(data);
+        } catch (e) {
+          if (n + 1 >= LOAD_ATTEMPTS) {
+            console.warn(`[audio] could not load ${url} after ${LOAD_ATTEMPTS} attempts:`, e && e.message);
+            return null;
+          }
+          await new Promise(r => setTimeout(r, retryDelayMs * (n + 1)));
+          return attempt(n + 1);
+        }
+      };
+      const p = attempt(0).then(buffer => {
+        pending.delete(url);
+        if (buffer) buffers.set(url, buffer);
+        return buffer;
+      });
       pending.set(url, p);
       return p;
     },
