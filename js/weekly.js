@@ -5,6 +5,10 @@ const MIN_TABLE = 2;
 const MAX_TABLE = 12;
 const TABLE_COUNT = MAX_TABLE - MIN_TABLE + 1;
 
+// Tables a leaderboard can ever hold. Only the daily challenge records scores
+// (`run.countsForHighscore()`), and it never picks 1x, so 1x has no list.
+export const SCORED_TABLES = Array.from({ length: TABLE_COUNT }, (_, i) => MIN_TABLE + i);
+
 export function getISOWeek(date = new Date()) {
   // Work in UTC to avoid DST edge cases
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
